@@ -1,1 +1,52 @@
-
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#858585">
+<meta name="description" content="Une matière géométrique traversée par le son. Un mix, un levier, un volet roulant.">
+<title>colinvrr</title>
+<meta property="og:title" content="colinvrr">
+<meta property="og:description" content="Une machine audiovisuelle. Un mix, six matières vivantes, un volet métallique.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="https://colinvrr.github.io/">
+<meta property="og:url" content="https://colinvrr.github.io/">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<main>
+<section class="machine" aria-label="Lecteur audiovisuel colinvrr">
+<button id="surface" type="button" aria-label="Lire ou mettre en pause le mix" aria-describedby="instructions">
+<canvas id="canvas" aria-hidden="true"></canvas>
+<span class="shutter" aria-hidden="true"><canvas id="shutter-canvas"></canvas><img id="shutter-tag" alt="" width="1536" height="1024" hidden></span>
+<span class="shutter-rail shutter-rail-left" aria-hidden="true"></span><span class="shutter-rail shutter-rail-right" aria-hidden="true"></span><span class="shutter-header" aria-hidden="true"></span>
+</button>
+<div class="controls" role="group" aria-label="Commandes de lecture">
+<div class="transport">
+<button class="push-button" id="stop" type="button" aria-label="Arrêt et fermeture du volet"><span class="button-face"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5h10v10H5z"/></svg></span></button>
+<button class="push-button" id="pause" type="button" aria-label="Pause" aria-pressed="false"><span class="button-face"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 4h3.5v12H5zm6.5 0H15v12h-3.5z"/></svg></span></button>
+<button class="push-button" id="play" type="button" aria-label="Lecture" aria-pressed="false"><span class="button-face"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.5 16 10 6 16.5Z"/></svg></span></button>
+<button class="push-button share-button" id="share" type="button" aria-label="Partager le site"><span class="button-face"><span id="share-label">SHARE</span></span></button>
+</div>
+<div class="mix-controls" role="group" aria-label="Commande du mix">
+<div class="mix-unit">
+<span class="led" id="mix-led" role="img" aria-label="MIX à l’arrêt"></span>
+<button class="lever" id="mix" type="button" role="switch" aria-checked="false" aria-label="Lancer le mix">
+<span class="lever-plate" aria-hidden="true"><span class="plate-screw"></span><span class="plate-screw"></span><span class="plate-screw"></span><span class="plate-screw"></span></span>
+<span class="lever-gate" aria-hidden="true"></span><span class="lever-socket" aria-hidden="true"></span>
+<span class="lever-stem" aria-hidden="true"><span class="lever-grip"></span></span>
+</button>
+<label class="mix-label" for="mix">MIX</label>
+</div>
+</div>
+</div>
+</section>
+<input id="file" type="file" accept="audio/*,video/*,.flac,.opus,.ogg,.m4a,.wav,.mp3,.aiff" hidden>
+<p id="instructions" class="sr-only">Actionnez le levier MIX pour écouter le morceau et ouvrir le volet. Pause fige le son et l’image. Le bouton carré arrête la lecture, remet le mix au début et referme le volet. Désactiver le levier met le mix en pause et referme le volet. Cliquer sur le carré lance ou met en pause la lecture. Vous pouvez déposer un autre fichier audio sur le carré pour l’écouter localement. Espace : lecture ou pause. M : microphone. S : son d’un onglet. F : plein écran. Échap : arrêter et fermer le volet.</p>
+<p id="status" class="sr-only" role="status" aria-live="polite">Volet fermé. MIX à l’arrêt.</p>
+</main>
+<script type="module" src="./tag.mjs"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
