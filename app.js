@@ -1,5 +1,7 @@
 import { MetalShutter } from './shutter.mjs';
 import { UniverseRenderer, universeNames } from './universes.mjs?v=10';
+import { createMediaControls } from './media-controls.mjs';
+import { MechanicalFeedback } from './mechanics.mjs';
 
 let canvas = document.querySelector('#canvas');
 const surface = document.querySelector('#surface');
@@ -13,6 +15,13 @@ const shareLabel = document.querySelector('#share-label');
 const mixButton = document.querySelector('#mix');
 const mixLed = document.querySelector('#mix-led');
 const track = {src:null, file:null};
+const feedback=new MechanicalFeedback();
+const mediaControls=createMediaControls({
+  getAudio:()=>mode==='file'?media:null,
+  play:resumePlayback,
+  pause:()=>{++inputGeneration;if(mode!=='idle')pausePlayback();},
+  stop:stopPlayback
+});
 const shutter = new MetalShutter(document.querySelector('#shutter-canvas'), document.querySelector('#shutter-tag'));
 let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false;
 const mixesReady = fetch('./mixes.json').then(response => {
@@ -30,6 +39,7 @@ function syncControls() {
   mixButton.setAttribute('aria-label',active ? 'Mettre le mix en pause et fermer le volet' : 'Lancer le mix');
   mixLed.dataset.on=String(active);
   mixLed.setAttribute('aria-label',`MIX ${active?'en lecture':'à l’arrêt'}`);
+  mediaControls.update(mode==='file'?media:null,playing,track.file?.name?.replace(/\.[^.]+$/,'')||'MIX');
 }
 function setShutter(open) {
   shutterOpen=open;
@@ -378,6 +388,7 @@ function stopPlayback() {
 async function startMix() {
   const generation=++inputGeneration;
   try {
+    mediaControls.preparePlayback();
     await audioGraph();
     await mixesReady;
     if(generation!==inputGeneration)return;
@@ -396,6 +407,7 @@ async function startMix() {
     if(track.file){objectURL=URL.createObjectURL(track.file);audio.src=objectURL;}
     else{audio.crossOrigin='anonymous';audio.src=track.src;}
     audio.preload='auto';
+    for(const event of ['loadedmetadata','durationchange','timeupdate','seeked','ratechange'])audio.addEventListener(event,()=>{if(media===audio)mediaControls.position();});
     mediaSource=context.createMediaElementSource(audio);mediaSource.connect(analyser);analyser.connect(context.destination);
     audio.addEventListener('playing',()=>{
       if(media!==audio)return;
@@ -446,6 +458,7 @@ async function liveInput(kind) {
   if(mode===kind){releaseSource();setStatus('Source déconnectée. Volet fermé.');return;}
   let pendingStream;
   try {
+    try{if(navigator.audioSession)navigator.audioSession.type='auto';}catch{}
     await audioGraph();
     if(kind==='microphone')pendingStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
     else pendingStream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
@@ -524,6 +537,7 @@ function analyse(dt) {
 }
 
 surface.addEventListener('click',()=>{if(playing)pausePlayback();else resumePlayback();});
+for(const [button,kind] of [[mixButton,'lever'],[stopButton,'stop'],[pauseButton,'pause'],[playButton,'play'],[shareButton,'share']])button.addEventListener('click',()=>{feedback.play(kind);});
 picker.addEventListener('change',()=>{loadFile(picker.files[0]);picker.value='';});
 playButton.addEventListener('click',resumePlayback);
 pauseButton.addEventListener('click',()=>{++inputGeneration;if(mode!=='idle')pausePlayback();});
@@ -670,11 +684,14 @@ if(gl){bindGraphicsContext(canvas);initializeGraphics();queueFrame();}
 else setStatus('Cette expérience nécessite un navigateur compatible WebGL 2.',true);
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){cancelAnimationFrame(animationRequest);animationRequest=0;}
-  else wakeGraphics();
+  else {
+    if(mode==='file'&&media&&!media.paused&&context?.state==='suspended')context.resume().catch(()=>{});
+    mediaControls.position();wakeGraphics();
+  }
 });
 window.addEventListener('pageshow',wakeGraphics);
 window.addEventListener('pagehide',event=>{
   if(event.persisted)return;
   disposed=true;cancelAnimationFrame(animationRequest);clearTimeout(graphicsRestoreTimer);
-  ++inputGeneration;releaseSource();shutter.dispose();context?.close();
+  ++inputGeneration;releaseSource();shutter.dispose();feedback.dispose();mediaControls.dispose();context?.close();
 });
