@@ -3,7 +3,7 @@ import { PaletteTimeline } from './palettes.mjs';
 // Macro surfaces with ray-traced relief, self-shadowing and a gyroid conductor.
 // The height atlas is evaluated once per texel, rather than at every ray step.
 const atlasSize=512;
-export const universeNames=['matiere','hertz','electricite','magnetisme','membrane','magma'];
+export const universeNames=['matiere','hertz','electricite','magnetisme','membrane','magma','cristal','fluide','strates','interferences'];
 const common=`
 float hash(vec2 p) {
   vec3 a=fract(vec3(p.xyx)*.1031);a+=dot(a,a.yzx+33.33);
@@ -79,6 +79,47 @@ float height(int id,vec2 p) {
     float crack=exp(-rock.y/(.018+bass*.022));
     float strata=fbm(p*1.8+t*.08)*.8+fbm(p*7.7)*.15;
     return strata+rock.z*.65-crack*(.7+bass*.35)-.65;
+  }
+  if(id==6) {
+    // Broad mineral facets with bevelled seams, not a field of identical spikes.
+    vec2 q=turn(.24)*p*.94;
+    q+=vec2(sin(p.y*.38-t*.24),cos(p.x*.41+t*.2))*.32;
+    vec3 mineral=cells(q);
+    float facet=1.-mineral.x*1.55;
+    float seam=smoothstep(0.,.07,mineral.y);
+    float pressure=.7+.3*sin(p.x*.48-p.y*.32-t*.5);
+    return facet*(1.5+bass*.65)*seam+mineral.z*.75+pressure*.45-.9;
+  }
+  if(id==7) {
+    // Rounded, connected liquid lobes and narrow valleys, advected as one skin.
+    vec2 q=turn(-.38)*p;
+    q+=vec2(sin(q.y*.57-t*.42),sin(q.x*.48+t*.36))*.8;
+    float flow=sin(q.x*.87+t*.49)+cos(q.y*.93-t*.38);
+    float lobes=exp(-pow(flow*.92,2.));
+    float swell=sin(q.x*.37+q.y*.46-t*.55)*.4;
+    float ripples=sin(flow*18.+q.y*2.-t)*.035*(.5+high);
+    return lobes*(1.8+bass*.55)+swell+ripples-.85;
+  }
+  if(id==8) {
+    // Contour shelves have a flat tread, a rounded lip and a steep riser.
+    vec2 q=turn(.7)*p;
+    float drift=q.y*.53+sin(q.x*.46-t*.31)*1.1;
+    drift+=fbm(q*.54+vec2(t*.07,-t*.045))*(1.+mid*.42);
+    float levels=drift*2.6;
+    float terraces=(floor(levels)+smoothstep(.67,.95,fract(levels)))/2.6;
+    float basin=sin(terraces*1.55+t*.26)*(1.35+bass*.35);
+    return basin+sin(q.x*.38+t*.2)*.4;
+  }
+  if(id==9) {
+    // Three travelling wave fronts interfere through a continuous metal skin.
+    vec2 a=vec2(-2.+sin(t*.23)*.8,-1.4);
+    vec2 b=vec2(2.1,1.+cos(t*.2)*.7);
+    float r1=length(p-a),r2=length(p-b),r3=length(p+vec2(.6,3.2));
+    float waves=sin(r1*3.6-t*1.7)+sin(r2*3.9-t*1.45)*.7;
+    waves+=sin(r3*2.1+t*.8)*.35;
+    float envelope=.75+.25*cos(p.x*.35+p.y*.28-t*.3);
+    float fine=sin(r1*22.-t*2.)*sin(r2*19.+t)*.045*(.4+high);
+    return waves*(.48+bass*.23)*envelope+fine+sin(p.y*.5-t*.3)*.25;
   }
   return 0.;
 }
@@ -211,7 +252,7 @@ void material(int id,vec3 p,vec3 n,vec3 v,float footprint,int layer,out vec3 alb
     float weave=(.5+.5*sin(q.x*235.))*(.5+.5*sin(q.y*220.));
     weave=.25+(weave-.25)*exp(-footprint*235.*.5);
     albedo*=.78+weave*.3;rough=.32;metal=.75;
-  }else{
+  }else if(id==5){
     vec2 rock=(q+vec2(uTime*.14,-uTime*.1))*1.2;rock+=vec2(fbm(q*.55+uTime*.045),fbm(q*.55-uTime*.039+8.))*.8;
     vec3 cell=cells(rock);
     float fissure=exp(-cell.y/(.034+uBands.x*.028));
@@ -221,6 +262,38 @@ void material(int id,vec3 p,vec3 n,vec3 v,float footprint,int layer,out vec3 alb
     emission=c2*1.5*fissure*(.65+uBands.x*.55);
     emission+=c3*1.5*pow(fissure,3.)*heat*(.3+uBands.y*.8);
     emission+=c3*1.3*pow(grain,18.)*fissure*uTransients.z;
+  }else if(id==6){
+    vec2 crystal=turn(.24)*q*.94;
+    crystal+=vec2(sin(q.y*.38-uTime*.24),cos(q.x*.41+uTime*.2))*.32;
+    vec3 facet=cells(crystal);
+    albedo=mix(c0*.65,c1*.8,facet.z);
+    float bevel=exp(-facet.y/.035);
+    float cleavage=pow(.5+.5*sin((q.x+q.y*.4)*48.+facet.z*12.),18.);
+    albedo*=.88+cleavage*.12*exp(-footprint*48.);
+    rough=.19;metal=.62;
+    emission=c2*bevel*(.12+uBands.y*.48);
+    emission+=c3*pow(max(dot(n,v),0.),12.)*uTransients.z*.2;
+  }else if(id==7){
+    float marble=sin(q.x*.9+q.y*.65+sin(q.y*.8-uTime*.48)*2.1);
+    float fres=pow(1.-max(dot(n,v),0.),2.);
+    albedo=mix(c0*.55,c1*.82,smoothstep(-.6,.8,marble));
+    albedo=mix(albedo,c2*.65,fres*.45);
+    rough=.14;metal=.97;
+    float caustic=pow(.5+.5*sin(q.x*8.+sin(q.y*4.-uTime*.6)*2.),22.);
+    emission=c3*caustic*(.03+uBands.z*.12)*max(n.y,0.);
+  }else if(id==8){
+    float contour=.5+.5*sin(p.y*43.);
+    float sediment=fbm(q*6.5+vec2(0,uTime*.025));
+    albedo=mix(c0*.55,c1*.85,smoothstep(-.9,.9,p.y));
+    albedo*=.68+sediment*.45;rough=.65;metal=.3;
+    float vein=pow(contour,20.)*smoothstep(.25,.85,n.y);
+    emission=mix(c2,c3,sediment)*vein*(.12+uBands.y*.55);
+  }else if(id==9){
+    float contour=.5+.5*sin(p.y*18.+q.x*.35);
+    albedo=mix(c0*.65,c1*.82,contour);rough=.27;metal=.86;
+    float node=pow(max(n.y,0.),8.);
+    emission=c2*node*(.06+uBands.y*.22);
+    emission+=c3*pow(contour,16.)*uTransients.z*.3;
   }
 }
 vec3 renderSculpture(int id,vec2 uv,int layer){

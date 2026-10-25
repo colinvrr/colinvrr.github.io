@@ -1,5 +1,5 @@
 import { MetalShutter } from './shutter.mjs';
-import { UniverseRenderer, universeNames } from './universes.mjs';
+import { UniverseRenderer, universeNames } from './universes.mjs?v=10';
 
 let canvas = document.querySelector('#canvas');
 const surface = document.querySelector('#surface');
@@ -14,13 +14,15 @@ const mixButton = document.querySelector('#mix');
 const mixLed = document.querySelector('#mix-led');
 const track = {src:null, file:null};
 const shutter = new MetalShutter(document.querySelector('#shutter-canvas'), document.querySelector('#shutter-tag'));
-let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0;
+let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false;
 const mixesReady = fetch('./mixes.json').then(response => {
   if(!response.ok)throw new Error('Mix configuration unavailable');
   return response.json();
 }).then(config => { track.src=config.src || null; })
 .catch(() => { /* Local file loading remains available without a configuration. */ });
 function syncControls() {
+  if(playing)hasStarted=true;
+  mixButton.dataset.invite=String(!hasStarted);
   playButton.setAttribute('aria-pressed',String(playing));
   pauseButton.setAttribute('aria-pressed',String(!playing && mode!=='idle'));
   const active=playing && mode==='file';
@@ -301,7 +303,7 @@ let sceneFrom=sceneSequence[sceneCursor],sceneTo=sceneFrom,sceneBlend=1,sceneHol
 let phraseAttacks=0,audioClock=0,lastPhraseAttack=-10;
 // Visit every world once before returning to Hertz. The relief keeps its own
 // five compositions while the outer score moves between different media.
-const universeSequence=[1,2,4,3,5,0];
+const universeSequence=[1,6,2,8,4,7,3,9,5,0];
 let universeCursor=0,universeFrom=1,universeTo=1,universeBlend=1;
 let universeHold=0,universeTransition=0,universeAttacks=0;
 function advanceUniverse(dt) {

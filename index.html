@@ -7,12 +7,12 @@
 <meta name="description" content="Une matière géométrique traversée par le son. Un mix, un levier, un volet roulant.">
 <title>colinvrr</title>
 <meta property="og:title" content="colinvrr">
-<meta property="og:description" content="Une machine audiovisuelle. Un mix, six matières vivantes, un volet métallique.">
+<meta property="og:description" content="Une machine audiovisuelle. Un mix, dix matières vivantes, un volet métallique.">
 <meta property="og:type" content="website">
 <link rel="canonical" href="https://colinvrr.github.io/">
 <meta property="og:url" content="https://colinvrr.github.io/">
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./style.css?v=10">
 </head>
 <body>
 <main>
@@ -32,7 +32,7 @@
 <div class="mix-controls" role="group" aria-label="Commande du mix">
 <div class="mix-unit">
 <span class="led" id="mix-led" role="img" aria-label="MIX à l’arrêt"></span>
-<button class="lever" id="mix" type="button" role="switch" aria-checked="false" aria-label="Lancer le mix">
+<button class="lever" id="mix" type="button" role="switch" aria-checked="false" aria-label="Lancer le mix" data-invite="true">
 <span class="lever-plate" aria-hidden="true"><span class="plate-screw"></span><span class="plate-screw"></span><span class="plate-screw"></span><span class="plate-screw"></span></span>
 <span class="lever-gate" aria-hidden="true"></span><span class="lever-socket" aria-hidden="true"></span>
 <span class="lever-stem" aria-hidden="true"><span class="lever-grip"></span></span>
@@ -47,6 +47,6 @@
 <p id="status" class="sr-only" role="status" aria-live="polite">Volet fermé. MIX à l’arrêt.</p>
 </main>
 <script type="module" src="./tag.mjs"></script>
-<script type="module" src="./app.js"></script>
+<script type="module" src="./app.js?v=10"></script>
 </body>
 </html>
