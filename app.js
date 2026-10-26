@@ -1,9 +1,9 @@
-import { MetalShutter } from './shutter.mjs?v=12';
+import { MetalShutter } from './shutter.mjs?v=13';
 import { UniverseRenderer, universeNames } from './universes.mjs?v=10';
 import { createMediaControls } from './media-controls.mjs';
-import { MechanicalFeedback } from './mechanics.mjs';
+import { MechanicalFeedback } from './mechanics.mjs?v=13';
 import { PortableRenderer } from './portable-renderer.mjs';
-import { createTrackClock } from './track-clock.mjs';
+import { createTrackClock } from './track-clock.mjs?v=13';
 
 let canvas = document.querySelector('#canvas');
 const surface = document.querySelector('#surface');
@@ -19,14 +19,15 @@ const mixLed = document.querySelector('#mix-led');
 const track = {src:null, file:null,duration:0};
 const trackClock=createTrackClock(document.querySelector('#mix-time'));
 const feedback=new MechanicalFeedback();
+feedback.setVisible(!document.hidden);
 const mediaControls=createMediaControls({
   getAudio:()=>mode==='file'?media:null,
   play:resumePlayback,
-  pause:()=>{++inputGeneration;if(mode!=='idle')pausePlayback();},
+  pause:()=>{++inputGeneration;if(mode!=='idle')pausePlayback();else{clockArmed=false;syncControls();}},
   stop:stopPlayback
 });
-const shutter = new MetalShutter(document.querySelector('#shutter-canvas'), document.querySelector('#shutter-tag'));
-let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false;
+const shutter = new MetalShutter(document.querySelector('#shutter-canvas'), document.querySelector('#shutter-tag'),{onMotion:motion=>feedback.shutter(motion)});
+let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false,clockArmed=false;
 const mixesReady = fetch('./mixes.json?v=12').then(response => {
   if(!response.ok)throw new Error('Mix configuration unavailable');
   return response.json();
@@ -44,6 +45,7 @@ function syncControls() {
   mixLed.setAttribute('aria-label',`MIX ${active?'en lecture':'à l’arrêt'}`);
   mediaControls.update(mode==='file'?media:null,playing,track.file?.name?.replace(/\.[^.]+$/,'')||'MIX');
   trackClock.update(mode==='file'?media:null,track.duration);
+  trackClock.setPower(clockArmed&&(mode==='file'||mode==='idle'));
 }
 function setShutter(open) {
   shutterOpen=open;
@@ -369,6 +371,7 @@ async function audioGraph() {
   if(!analyser){analyser=context.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=.2;spectrum=new Float32Array(analyser.frequencyBinCount);waveform=new Float32Array(analyser.fftSize);}
 }
 function releaseSource(close=true) {
+  if(close)clockArmed=false;
   const previousMedia=media;
   media=null;
   if(previousMedia){previousMedia.pause();previousMedia.removeAttribute('src');previousMedia.load();}
@@ -385,6 +388,7 @@ function releaseSource(close=true) {
   syncControls();
 }
 function pausePlayback(close=false) {
+  if(close)clockArmed=false;
   playing=false;visualPaused=true;
   if(media)media.pause();
   else if(context && mode!=='idle')context.suspend().catch(()=>{});
@@ -399,6 +403,7 @@ function stopPlayback() {
 }
 async function startMix() {
   const generation=++inputGeneration;
+  clockArmed=true;trackClock.setPower(true);
   try {
     mediaControls.preparePlayback();
     await audioGraph();
@@ -553,11 +558,11 @@ function analyse(dt) {
   bass=envelope(bass,levels[0],4.6);mid=envelope(mid,levels[1],7);high=envelope(high,levels[2],12);
 }
 
-surface.addEventListener('click',()=>{if(playing)pausePlayback();else resumePlayback();});
+surface.addEventListener('click',()=>{feedback.unlock();if(playing)pausePlayback();else resumePlayback();});
 for(const [button,kind] of [[mixButton,'lever'],[stopButton,'stop'],[pauseButton,'pause'],[playButton,'play'],[shareButton,'share']])button.addEventListener('click',()=>{feedback.play(kind);});
 picker.addEventListener('change',()=>{loadFile(picker.files[0]);picker.value='';});
 playButton.addEventListener('click',resumePlayback);
-pauseButton.addEventListener('click',()=>{++inputGeneration;if(mode!=='idle')pausePlayback();});
+pauseButton.addEventListener('click',()=>{++inputGeneration;if(mode!=='idle')pausePlayback();else{clockArmed=false;syncControls();}});
 stopButton.addEventListener('click',stopPlayback);
 shareButton.addEventListener('click',shareSite);
 mixButton.addEventListener('click',()=>{
@@ -572,7 +577,7 @@ window.addEventListener('keydown',async event=>{
   const key=event.key.toLowerCase();
   if(key===' '){
     if(event.target.closest('button') && event.target!==surface)return;
-    event.preventDefault();if(playing)pausePlayback();else resumePlayback();
+    event.preventDefault();feedback.unlock();if(playing)pausePlayback();else resumePlayback();
   }
   if(key==='m'){event.preventDefault();liveInput('microphone');}
   if(key==='s'){event.preventDefault();liveInput('screen');}
@@ -727,6 +732,7 @@ function wakeGraphics() {
 if(gl)bindGraphicsContext(canvas);
 initializeGraphics();queueFrame();
 document.addEventListener('visibilitychange',()=>{
+  feedback.setVisible(!document.hidden);
   if(document.hidden){cancelAnimationFrame(animationRequest);animationRequest=0;}
   else {
     if(mode==='file'&&media&&!media.paused&&context?.state==='suspended')context.resume().catch(()=>{});

@@ -12,7 +12,7 @@
 <link rel="canonical" href="https://colinvrr.github.io/">
 <meta property="og:url" content="https://colinvrr.github.io/">
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="./style.css?v=12">
+<link rel="stylesheet" href="./style.css?v=13">
 </head>
 <body>
 <main>
@@ -29,7 +29,7 @@
 <button class="push-button" id="play" type="button" aria-label="Lecture" aria-pressed="false"><span class="button-face"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.5 16 10 6 16.5Z"/></svg></span></button>
 <button class="push-button share-button" id="share" type="button" aria-label="Partager le site"><span class="button-face"><span id="share-label">SHARE</span></span></button>
 </div>
-<output id="mix-time" class="mix-time" aria-label="Temps écoulé et durée du mix" aria-live="off">00:00 / --:--</output></div>
+<div class="lcd-clock" data-power="off" role="group" aria-label="Compteur du mix éteint"><output id="mix-time" class="lcd-screen" aria-label="Temps écoulé et durée du mix" aria-live="off" aria-hidden="true"></output><span class="lcd-led" aria-hidden="true"></span></div></div>
 <div class="mix-controls" role="group" aria-label="Commande du mix">
 <div class="mix-unit">
 <span class="led" id="mix-led" role="img" aria-label="MIX à l’arrêt"></span>
@@ -48,6 +48,6 @@
 <p id="status" class="sr-only" role="status" aria-live="polite">Volet fermé. MIX à l’arrêt.</p>
 </main>
 <script type="module" src="./tag.mjs"></script>
-<script type="module" src="./app.js?v=12"></script>
+<script type="module" src="./app.js?v=13"></script>
 </body>
 </html>

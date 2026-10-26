@@ -45,13 +45,13 @@ function scratch(ctx,points,width=1,alpha=.5) {
 }
 
 export class MetalShutter {
-  constructor(canvas,image) {
+  constructor(canvas,image,{onMotion}={}) {
     this.canvas=canvas;this.ctx=canvas.getContext('2d',{alpha:true});
-    this.image=image;this.progress=0;this.target=0;this.textures=[];
+    this.image=image;this.progress=0;this.target=0;this.textures=[];this.onMotion=onMotion;
     this.reduced=matchMedia('(prefers-reduced-motion: reduce)');
     this.onImage=()=>this.build();image.addEventListener('load',this.onImage);
     this.observer=new ResizeObserver(()=>this.draw());this.observer.observe(canvas);
-    this.onPreference=()=>{if(this.reduced.matches){this.progress=this.target;this.draw();}};
+    this.onPreference=()=>{if(this.reduced.matches){this.progress=this.target;this.draw();this.reportMotion();}};
     this.reduced.addEventListener('change',this.onPreference);
     this.build();
   }
@@ -139,9 +139,14 @@ export class MetalShutter {
     scratch(ctx,[[472,29],[485,27],[494,29]],.8,.35);
     return bar;
   }
+  reportMotion(){
+    try{this.onMotion?.({moving:Math.abs(this.target-this.progress)>.00001,direction:Math.sign(this.target-this.progress),progress:this.progress});}catch{}
+  }
   setOpen(open) {
     this.target=open?1:0;
-    if(this.reduced.matches){this.progress=this.target;this.draw();return;}
+    if(this.reduced.matches){this.progress=this.target;this.draw();this.reportMotion();return;}
+    this.reportMotion();
+    if(this.progress===this.target&&!this.raf)return;
     if(this.raf)return;
     let last=performance.now();
     const step=now=>{
@@ -149,6 +154,7 @@ export class MetalShutter {
       const direction=Math.sign(this.target-this.progress);
       this.progress=clamp(this.progress+direction*dt/(direction>0?1.95:2.15),0,1);
       this.draw();
+      this.reportMotion();
       if(Math.abs(this.progress-this.target)>.00001)this.raf=requestAnimationFrame(step);
       else this.raf=0;
     };
@@ -198,6 +204,7 @@ export class MetalShutter {
   }
   dispose() {
     cancelAnimationFrame(this.raf);this.raf=0;
+    try{this.onMotion?.({moving:false,direction:0,progress:this.progress});}catch{}
     this.observer.disconnect();this.image.removeEventListener('load',this.onImage);
     this.reduced.removeEventListener('change',this.onPreference);
   }
