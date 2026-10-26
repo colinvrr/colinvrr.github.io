@@ -1,7 +1,9 @@
-import { MetalShutter } from './shutter.mjs';
+import { MetalShutter } from './shutter.mjs?v=12';
 import { UniverseRenderer, universeNames } from './universes.mjs?v=10';
 import { createMediaControls } from './media-controls.mjs';
 import { MechanicalFeedback } from './mechanics.mjs';
+import { PortableRenderer } from './portable-renderer.mjs';
+import { createTrackClock } from './track-clock.mjs';
 
 let canvas = document.querySelector('#canvas');
 const surface = document.querySelector('#surface');
@@ -14,7 +16,8 @@ const shareButton = document.querySelector('#share');
 const shareLabel = document.querySelector('#share-label');
 const mixButton = document.querySelector('#mix');
 const mixLed = document.querySelector('#mix-led');
-const track = {src:null, file:null};
+const track = {src:null, file:null,duration:0};
+const trackClock=createTrackClock(document.querySelector('#mix-time'));
 const feedback=new MechanicalFeedback();
 const mediaControls=createMediaControls({
   getAudio:()=>mode==='file'?media:null,
@@ -24,10 +27,10 @@ const mediaControls=createMediaControls({
 });
 const shutter = new MetalShutter(document.querySelector('#shutter-canvas'), document.querySelector('#shutter-tag'));
 let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false;
-const mixesReady = fetch('./mixes.json').then(response => {
+const mixesReady = fetch('./mixes.json?v=12').then(response => {
   if(!response.ok)throw new Error('Mix configuration unavailable');
   return response.json();
-}).then(config => { track.src=config.src || null; })
+}).then(config => { track.src=config.src || null;if(!track.file){track.duration=Number(config.duration)||0;trackClock.update(null,track.duration);} })
 .catch(() => { /* Local file loading remains available without a configuration. */ });
 function syncControls() {
   if(playing)hasStarted=true;
@@ -40,6 +43,7 @@ function syncControls() {
   mixLed.dataset.on=String(active);
   mixLed.setAttribute('aria-label',`MIX ${active?'en lecture':'à l’arrêt'}`);
   mediaControls.update(mode==='file'?media:null,playing,track.file?.name?.replace(/\.[^.]+$/,'')||'MIX');
+  trackClock.update(mode==='file'?media:null,track.duration);
 }
 function setShutter(open) {
   shutterOpen=open;
@@ -51,7 +55,14 @@ function requestFile() {
   picker.click();
 }
 const contextOptions={antialias:false,alpha:false,powerPreference:'default'};
-let gl=canvas.getContext('webgl2',contextOptions);
+let graphicsLevel=/Android/i.test(navigator.userAgent||'')||navigator.userAgentData?.platform==='Android'?1:0;
+function acquireContext(target){
+  if(graphicsLevel===2)return null;
+  const kinds=graphicsLevel===0?['webgl2','webgl','experimental-webgl']:['webgl','experimental-webgl'];
+  for(const kind of kinds){try{const result=target.getContext(kind,contextOptions);if(result){if(kind!=='webgl2')graphicsLevel=1;return result;}}catch{}}
+  graphicsLevel=2;return null;
+}
+let gl=acquireContext(canvas);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const setStatus = (message, error = false) => {
   status.textContent = message;
@@ -251,6 +262,7 @@ function initRenderer() {
   gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,fieldTexture,0);
   if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw new Error('Height field framebuffer unavailable');
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.useProgram(program);
   gl.uniform1i(gl.getUniformLocation(program,'uField'),0);
   const vertices=[];
   const face=(a,b,c,d,n)=>{for(const p of [a,b,c,a,c,d])vertices.push(...p,...n);};
@@ -407,7 +419,11 @@ async function startMix() {
     if(track.file){objectURL=URL.createObjectURL(track.file);audio.src=objectURL;}
     else{audio.crossOrigin='anonymous';audio.src=track.src;}
     audio.preload='auto';
-    for(const event of ['loadedmetadata','durationchange','timeupdate','seeked','ratechange'])audio.addEventListener(event,()=>{if(media===audio)mediaControls.position();});
+    for(const event of ['loadedmetadata','durationchange','timeupdate','seeking','seeked','ratechange'])audio.addEventListener(event,()=>{
+      if(media!==audio)return;
+      if(Number.isFinite(audio.duration)&&audio.duration>0)track.duration=audio.duration;
+      mediaControls.position();trackClock.update(audio,track.duration);
+    });
     mediaSource=context.createMediaElementSource(audio);mediaSource.connect(analyser);analyser.connect(context.destination);
     audio.addEventListener('playing',()=>{
       if(media!==audio)return;
@@ -442,6 +458,7 @@ async function loadFile(file) {
   if(!file)return;
   releaseSource(false);
   track.file=file;
+  track.duration=0;trackClock.update(null,0);
   return startMix();
 }
 async function resumePlayback() {
@@ -565,6 +582,7 @@ window.addEventListener('keydown',async event=>{
 
 let last=performance.now(),lastDraw=0,animationRequest=0;
 let graphicsReady=false,graphicsRestoreTimer=0,renderQuality=1,slowFrames=0,disposed=false;
+let portableRenderer=null,graphicsSeed,checkOutput=true,checkedWorld=null;
 function queueFrame() {
   if(!disposed&&!animationRequest)animationRequest=requestAnimationFrame(frame);
 }
@@ -578,14 +596,26 @@ function reconcilePlayback() {
   }else if(media.paused&&playing){playing=false;visualPaused=true;syncControls();}
 }
 function initializeGraphics() {
-  const previous=universeRenderer;
+  const previous=portableRenderer||universeRenderer;
+  graphicsSeed ??= previous?.palettes?.seed;
   try {
-    initRenderer();
-    universeRenderer=new UniverseRenderer(gl,compile,fieldVertex,{seed:previous?.palettes?.seed});
-    if(previous?.flow){universeRenderer.flow.set(previous.flow);universeRenderer.flowKey=previous.flowKey;}
+    if(graphicsLevel===0){
+      initRenderer();portableRenderer=null;
+      universeRenderer=new UniverseRenderer(gl,compile,fieldVertex,{seed:graphicsSeed});
+      if(previous?.flow){universeRenderer.flow.set(previous.flow);universeRenderer.flowKey=previous.flowKey;}
+      graphicsSeed=universeRenderer.palettes.seed;
+    }else{
+      portableRenderer=new PortableRenderer(canvas,gl,{seed:graphicsSeed});universeRenderer=null;
+      graphicsSeed=portableRenderer.palettes.seed;
+    }
+    canvas.dataset.renderer=gl?(graphicsLevel===0?'raymarch':'surface-mesh'):'canvas2d';checkOutput=true;
     graphicsReady=true;lastDraw=0;slowFrames=0;
     return true;
-  }catch(error){graphicsReady=false;console.error(error);setStatus('Le rendu graphique n’a pas pu démarrer.',true);return false;}
+  }catch(error){
+    graphicsReady=false;console.error(error);
+    if(graphicsLevel<2){graphicsLevel++;replaceGraphicsCanvas();return graphicsReady;}
+    setStatus('Le rendu graphique n’a pas pu démarrer.',true);return false;
+  }
 }
 function replaceGraphicsCanvas() {
   graphicsRestoreTimer=0;
@@ -593,13 +623,13 @@ function replaceGraphicsCanvas() {
   const previous=canvas,previousContext=gl;
   const replacement=document.createElement('canvas');replacement.id='canvas';replacement.setAttribute('aria-hidden','true');
   surface.replaceChild(replacement,previous);canvas=replacement;
-  gl=canvas.getContext('webgl2',contextOptions);
+  gl=acquireContext(canvas);
   try{previousContext?.getExtension('WEBGL_lose_context')?.loseContext();}catch{}
-  if(!gl){setStatus('Le rendu graphique n’est pas disponible dans ce navigateur.',true);return;}
-  bindGraphicsContext(canvas);
+  if(gl)bindGraphicsContext(canvas);
   if(initializeGraphics())setStatus(playing?'MIX en lecture. Image rétablie.':'Image rétablie.');
 }
 function scheduleGraphicsRecovery() {
+  if(graphicsReady)graphicsLevel=Math.min(2,graphicsLevel+1);
   graphicsReady=false;renderQuality=Math.max(.6,renderQuality*.8);
   if(!graphicsRestoreTimer)graphicsRestoreTimer=setTimeout(replaceGraphicsCanvas,1200);
 }
@@ -612,12 +642,15 @@ function bindGraphicsContext(target) {
   target.addEventListener('webglcontextrestored',()=>{
     if(target!==canvas||disposed)return;
     clearTimeout(graphicsRestoreTimer);graphicsRestoreTimer=0;
-    if(initializeGraphics())setStatus(playing?'MIX en lecture. Image rétablie.':'Image rétablie.');
+    replaceGraphicsCanvas();
   });
 }
 function drawGraphics() {
   const size=Math.max(1,Math.round(Math.min(640,surface.clientWidth*Math.min(devicePixelRatio,1.35))*renderQuality));
-  if(canvas.width!==size||canvas.height!==size){canvas.width=size;canvas.height=size;gl.viewport(0,0,size,size);}
+  if(canvas.width!==size||canvas.height!==size){canvas.width=size;canvas.height=size;if(gl)gl.viewport(0,0,size,size);}
+  if(portableRenderer){
+    portableRenderer.resize(size);portableRenderer.render(visualTime,[bass,mid,high],transients,universeFrom,universeTo,universeBlend,waveform,!visualPaused);
+  }else{
   universeRenderer.resize(size);
   if(!visualPaused)universeRenderer.uploadSignal(waveform,spectrum,context?.sampleRate);
   const needsRelief=universeTo===0 || (universeFrom===0 && universeBlend<1);
@@ -650,6 +683,16 @@ function drawGraphics() {
     gl.drawArraysInstanced(gl.TRIANGLES,0,vertexCount,cells);
   }
   universeRenderer.render(visualTime,[bass,mid,high],transients,universeFrom,universeTo,universeBlend);
+  }
+  if(gl){
+    const error=gl.getError();if(error)throw new Error(`WebGL draw error ${error}`);
+    const world=universeBlend===1?universeTo:null;
+    if(shutterOpen&&(checkOutput||(world!==null&&world!==checkedWorld))){
+      const pixels=new Uint8Array(size*size*4);gl.readPixels(0,0,size,size,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+      let brightest=0;for(let i=0;i<pixels.length;i+=64)brightest=Math.max(brightest,pixels[i],pixels[i+1],pixels[i+2]);
+      if(brightest<5)throw new Error('Empty graphics output');checkOutput=false;checkedWorld=world;
+    }
+  }
   canvas.dataset.universe=universeNames[universeTo];
   canvas.dataset.transition=universeBlend.toFixed(3);
 }
@@ -665,9 +708,10 @@ function frame(now) {
     advanceScene(dt*(reducedMotion.matches?.2:1));
     advanceUniverse(dt*(reducedMotion.matches?.2:1));
   }
-  if(!graphicsReady||gl.isContextLost())return;
+  if(!graphicsReady)return;
+  if(gl?.isContextLost()){scheduleGraphicsRecovery();return;}
   if(!shutterOpen&&now>shutterUntil)return;
-  if(now-lastDraw<(visualPaused?200:reducedMotion.matches?66:16))return;
+  if(now-lastDraw<(visualPaused?200:reducedMotion.matches||!gl?66:portableRenderer?33:16))return;
   if(!visualPaused&&lastDraw>0&&now-lastDraw>45)slowFrames++;
   else slowFrames=Math.max(0,slowFrames-1);
   if(slowFrames>=6){renderQuality=Math.max(.6,renderQuality*.85);slowFrames=0;}
@@ -676,12 +720,12 @@ function frame(now) {
   catch(error){console.error(error);scheduleGraphicsRecovery();setStatus('Rétablissement de l’image en cours. Le son continue.');}
 }
 function wakeGraphics() {
-  if(disposed||!gl)return;
+  if(disposed)return;
   if(animationRequest)cancelAnimationFrame(animationRequest);
   animationRequest=0;last=performance.now();queueFrame();
 }
-if(gl){bindGraphicsContext(canvas);initializeGraphics();queueFrame();}
-else setStatus('Cette expérience nécessite un navigateur compatible WebGL 2.',true);
+if(gl)bindGraphicsContext(canvas);
+initializeGraphics();queueFrame();
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){cancelAnimationFrame(animationRequest);animationRequest=0;}
   else {
@@ -693,5 +737,5 @@ window.addEventListener('pageshow',wakeGraphics);
 window.addEventListener('pagehide',event=>{
   if(event.persisted)return;
   disposed=true;cancelAnimationFrame(animationRequest);clearTimeout(graphicsRestoreTimer);
-  ++inputGeneration;releaseSource();shutter.dispose();feedback.dispose();mediaControls.dispose();context?.close();
+  ++inputGeneration;releaseSource();shutter.dispose();portableRenderer?.dispose();feedback.dispose();mediaControls.dispose();context?.close();
 });

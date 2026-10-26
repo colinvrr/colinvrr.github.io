@@ -72,7 +72,7 @@ export class MetalShutter {
       for(let x=0;x<SIZE;x++) {
         const warp=bend(x,i);
         for(let y=0;y<sheet.height;y++) {
-          const v=y-5-warp;if(v<0||v>PITCH+1.7)continue;
+          const v=y-5-warp;if(v<0||v>PITCH+6.5)continue;
           const z=depth(x,v,i);
           const nx=-(depth(x+.6,v,i)-depth(x-.6,v,i))/1.2;
           const ny=-(depth(x,v+.3,i)-depth(x,v-.3,i))/.6;
@@ -179,9 +179,14 @@ export class MetalShutter {
     if(retracted)return;
     const rect=this.canvas.getBoundingClientRect();if(!rect.width)return;
     const pixels=Math.round(rect.width*Math.min(window.devicePixelRatio||1,2.5));
-    if(this.canvas.width!==pixels){this.canvas.width=this.canvas.height=pixels;}
+    if(this.canvas.width!==pixels||this.canvas.height!==pixels){this.canvas.width=this.canvas.height=pixels;}
     const ctx=this.ctx;ctx.setTransform(pixels/SIZE,0,0,pixels/SIZE,0,0);ctx.clearRect(0,0,SIZE,SIZE);
     const lift=liftAt(this.progress);
+    // The interlocking backs and the take-up hood remain opaque. Only the
+    // opening below the bottom rail can reveal the audiovisual surface.
+    const covered=clamp(guidePosition(SIZE-lift).y,0,SIZE);
+    ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
+    ctx.fillStyle='#72746e';ctx.fillRect(0,0,SIZE,covered);
     // The overlap is drawn bottom-to-top, like the real hooked profiles.
     if(this.bar)this.drawSheet(this.bar,SIZE-BAR,lift,BLADES);
     for(let i=BLADES-1;i>=0;i--)this.drawSheet(this.textures[i],i*PITCH-5,lift,i);

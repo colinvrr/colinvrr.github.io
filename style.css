@@ -25,6 +25,8 @@ canvas { width: 100%; height: 100%; display: block; }
 .shutter-header { position: absolute; pointer-events: none; z-index: 4; left: 0; right: 0; top: 0; height: 1.5%; background: linear-gradient(#4c4d4a,#71726e 40%,#91928c 75%,#555650); box-shadow: 0 1px 2px #0005; }
 .controls { width: 100%; display: flex; align-items: center; flex-direction: column; padding-top: 28px; gap: 27px; user-select: none; }
 .transport { display: flex; align-items: center; gap: 10px; }
+.transport-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.mix-time { color: #292a27; font: 500 10px/1 ui-monospace, 'Courier New', monospace; font-variant-numeric: tabular-nums; letter-spacing: 1.2px; text-shadow: 0 1px 0 #aaaaa35c; white-space: nowrap; }
 .push-button { position: relative; width: 48px; height: 39px; padding: 2px 2px 5px; border: 1px solid #51514f; border-radius: 4px; background: linear-gradient(#5a5a58,#464644); box-shadow: 0 1px 0 #bababa, 0 3px 3px #0003; cursor: pointer; outline: none; }
 .button-face { display: flex; height: 100%; align-items: center; justify-content: center; border-radius: 2px; border: 1px solid; border-color: var(--control-edge); background: var(--control-face); box-shadow: inset 0 1px 1px #d4d4c95c, 0 2px 0 #63635e, 0 3px 1px #292927; color: #343530; transform: translateY(-1px); transition: transform 85ms ease, box-shadow 85ms ease; }
 .button-face svg { width: 18px; height: 18px; fill: #363833; filter: drop-shadow(0 1px 0 #cecec65c); }
