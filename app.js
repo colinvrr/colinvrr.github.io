@@ -1,12 +1,18 @@
-import { MetalShutter } from './shutter.mjs?v=13';
+import { MetalShutter } from './shutter.mjs?v=16';
+import { StreetScene } from './model-scene.mjs?v=16';
 import { UniverseRenderer, universeNames } from './universes.mjs?v=10';
 import { createMediaControls } from './media-controls.mjs';
 import { MechanicalFeedback } from './mechanics.mjs?v=13';
 import { PortableRenderer } from './portable-renderer.mjs';
 import { createTrackClock } from './track-clock.mjs?v=13';
+import { applyPlace } from './places.mjs?v=16';
 
 let canvas = document.querySelector('#canvas');
 const surface = document.querySelector('#surface');
+const visualWindow = document.querySelector('#visual-window');
+const place = applyPlace(surface);
+const scene = new StreetScene(document.querySelector('#model-canvas'),visualWindow,place);
+surface.dataset.placeReady='true';
 const picker = document.querySelector('#file');
 const status = document.querySelector('#status');
 const playButton = document.querySelector('#play');
@@ -26,7 +32,7 @@ const mediaControls=createMediaControls({
   pause:()=>{++inputGeneration;if(mode!=='idle')pausePlayback();else{clockArmed=false;syncControls();}},
   stop:stopPlayback
 });
-const shutter = new MetalShutter(document.querySelector('#shutter-canvas'), document.querySelector('#shutter-tag'),{onMotion:motion=>feedback.shutter(motion)});
+const shutter = new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
 let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false,clockArmed=false;
 const mixesReady = fetch('./mixes.json?v=12').then(response => {
   if(!response.ok)throw new Error('Mix configuration unavailable');
@@ -627,7 +633,7 @@ function replaceGraphicsCanvas() {
   if(disposed||graphicsReady)return;
   const previous=canvas,previousContext=gl;
   const replacement=document.createElement('canvas');replacement.id='canvas';replacement.setAttribute('aria-hidden','true');
-  surface.replaceChild(replacement,previous);canvas=replacement;
+  visualWindow.replaceChild(replacement,previous);canvas=replacement;
   gl=acquireContext(canvas);
   try{previousContext?.getExtension('WEBGL_lose_context')?.loseContext();}catch{}
   if(gl)bindGraphicsContext(canvas);
@@ -651,7 +657,7 @@ function bindGraphicsContext(target) {
   });
 }
 function drawGraphics() {
-  const size=Math.max(1,Math.round(Math.min(640,surface.clientWidth*Math.min(devicePixelRatio,1.35))*renderQuality));
+  const size=Math.max(1,Math.round(Math.min(640,canvas.clientWidth*Math.min(devicePixelRatio,1.35))*renderQuality));
   if(canvas.width!==size||canvas.height!==size){canvas.width=size;canvas.height=size;if(gl)gl.viewport(0,0,size,size);}
   if(portableRenderer){
     portableRenderer.resize(size);portableRenderer.render(visualTime,[bass,mid,high],transients,universeFrom,universeTo,universeBlend,waveform,!visualPaused);
@@ -743,5 +749,5 @@ window.addEventListener('pageshow',wakeGraphics);
 window.addEventListener('pagehide',event=>{
   if(event.persisted)return;
   disposed=true;cancelAnimationFrame(animationRequest);clearTimeout(graphicsRestoreTimer);
-  ++inputGeneration;releaseSource();shutter.dispose();portableRenderer?.dispose();feedback.dispose();mediaControls.dispose();context?.close();
+  ++inputGeneration;releaseSource();shutter.dispose();scene.dispose();portableRenderer?.dispose();feedback.dispose();mediaControls.dispose();context?.close();
 });

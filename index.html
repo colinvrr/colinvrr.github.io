@@ -12,15 +12,14 @@
 <link rel="canonical" href="https://colinvrr.github.io/">
 <meta property="og:url" content="https://colinvrr.github.io/">
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="./style.css?v=13">
+<link rel="stylesheet" href="./style.css?v=16">
 </head>
 <body>
 <main>
 <section class="machine" aria-label="Lecteur audiovisuel colinvrr">
-<button id="surface" type="button" aria-label="Lire ou mettre en pause le mix" aria-describedby="instructions">
-<canvas id="canvas" aria-hidden="true"></canvas>
-<span class="shutter" aria-hidden="true"><canvas id="shutter-canvas"></canvas><img id="shutter-tag" alt="" width="1536" height="1024" hidden></span>
-<span class="shutter-rail shutter-rail-left" aria-hidden="true"></span><span class="shutter-rail shutter-rail-right" aria-hidden="true"></span><span class="shutter-header" aria-hidden="true"></span>
+<button id="surface" type="button" aria-label="Façade parisienne, lire ou mettre en pause le mix" aria-describedby="instructions">
+<span id="visual-window" class="visual-window" aria-hidden="true"><canvas id="canvas"></canvas></span>
+<canvas id="model-canvas" class="model-canvas" aria-hidden="true"></canvas>
 </button>
 <div class="controls" role="group" aria-label="Commandes de lecture">
 <div class="transport-wrap"><div class="transport">
@@ -47,7 +46,6 @@
 <p id="instructions" class="sr-only">Actionnez le levier MIX pour écouter le morceau et ouvrir le volet. Pause fige le son et l’image. Le bouton carré arrête la lecture, remet le mix au début et referme le volet. Désactiver le levier met le mix en pause et referme le volet. Cliquer sur le carré lance ou met en pause la lecture. Vous pouvez déposer un autre fichier audio sur le carré pour l’écouter localement. Espace : lecture ou pause. M : microphone. S : son d’un onglet. F : plein écran. Échap : arrêter et fermer le volet.</p>
 <p id="status" class="sr-only" role="status" aria-live="polite">Volet fermé. MIX à l’arrêt.</p>
 </main>
-<script type="module" src="./tag.mjs"></script>
-<script type="module" src="./app.js?v=13"></script>
+<script type="module" src="./app.js?v=16"></script>
 </body>
 </html>
