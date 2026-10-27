@@ -71,8 +71,22 @@ canvas { display: block; }
 .mix-label { color: #343530; font: 600 10px/1 ui-monospace, 'Courier New', monospace; letter-spacing: 1.1px; text-shadow: 0 1px 0 #aaa99d9c; cursor: pointer; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @media (pointer: coarse), (max-width: 900px) { .push-button { min-height: 44px; } }
-@media (max-width: 600px) { .controls { padding-top: 25px; gap: 25px; } }
 @media (max-height: 550px) and (min-width: 601px) { #surface { height: 70svh; } .controls { gap: 18px; } }
+@media (max-width: 600px), (max-height: 550px) and (pointer: coarse) {
+  /* Enlarge the central garage while keeping its whole opening in view. */
+  #surface { height: min(calc(100svh - 140px - env(safe-area-inset-bottom, 0px)), calc((100vw - 24px) * 1.65)); }
+  .controls { min-height: calc(140px + env(safe-area-inset-bottom, 0px)); flex-direction: row; justify-content: center; gap: 12px; padding: 12px 8px calc(16px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 380px) {
+  .share-button { width: 70px; margin-left: 8px; }
+}
+@media (max-width: 340px) {
+  .controls { gap: 10px; }
+  .transport { gap: 6px; }
+  .push-button { width: 44px; }
+  .share-button { width: 60px; margin-left: 4px; }
+  .mix-unit { width: 68px; }
+}
 @media (prefers-reduced-motion: reduce) { .lever-stem, .lever-grip { transition-duration: .01s; } .lever[data-invite="true"]::before { animation: none; opacity: .7; } }
 main:fullscreen { background: #858585; width: 100%; height: 100%; }
 
