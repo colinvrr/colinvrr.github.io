@@ -1,9 +1,11 @@
 import { PaletteTimeline } from './palettes.mjs';
+import {styleNames,motionSignature,motionGLSL,transitionGLSL,roughness,metalness} from './video-styles.mjs';
+import {extraHeightGLSL} from './video-fields.mjs';
 
 // Macro surfaces with ray-traced relief, self-shadowing and a gyroid conductor.
 // The height atlas is evaluated once per texel, rather than at every ray step.
 const atlasSize=512;
-export const universeNames=['matiere','hertz','electricite','magnetisme','membrane','magma','cristal','fluide','strates','interferences'];
+export const universeNames=styleNames;
 const common=`
 float hash(vec2 p) {
   vec3 a=fract(vec3(p.xyx)*.1031);a+=dot(a,a.yzx+33.33);
@@ -36,7 +38,10 @@ uniform vec3 uWorlds;
 uniform sampler2D uSignal;
 out vec4 fragColor;
 ${common}
-float height(int id,vec2 p) {
+${motionGLSL}
+${extraHeightGLSL}
+float height(int id,vec2 p,int layer) {
+  p=motionPoint(p,layer);
   float t=uTime;
   float bass=uBands.x,mid=uBands.y,high=uBands.z;
   if(id==1) {
@@ -95,7 +100,7 @@ float height(int id,vec2 p) {
     vec2 q=turn(-.38)*p;
     q+=vec2(sin(q.y*.57-t*.42),sin(q.x*.48+t*.36))*.8;
     float flow=sin(q.x*.87+t*.49)+cos(q.y*.93-t*.38);
-    float lobes=exp(-pow(flow*.92,2.));
+    float lobes=exp(-(flow*.92)*(flow*.92));
     float swell=sin(q.x*.37+q.y*.46-t*.55)*.4;
     float ripples=sin(flow*18.+q.y*2.-t)*.035*(.5+high);
     return lobes*(1.8+bass*.55)+swell+ripples-.85;
@@ -121,13 +126,13 @@ float height(int id,vec2 p) {
     float fine=sin(r1*22.-t*2.)*sin(r2*19.+t)*.045*(.4+high);
     return waves*(.48+bass*.23)*envelope+fine+sin(p.y*.5-t*.3)*.25;
   }
-  return 0.;
+  return extraHeight(id,p);
 }
 vec2 encode(float h){float v=floor(clamp((h+5.)/10.,0.,1.)*65535.+.5);return vec2(floor(v/256.),mod(v,256.))/255.;}
 void main(){
   vec2 p=(gl_FragCoord.xy/${atlasSize}.-.5)*24.;
   int a=int(uWorlds.x),b=int(uWorlds.y);
-  float first=height(a,p),second=a==b?first:height(b,p);
+  float first=height(a,p,0),second=a==b?first:height(b,p,1);
   fragColor=vec4(encode(first),encode(second));
 }`;
 export const universeFragment=`#version 300 es
@@ -143,8 +148,10 @@ uniform vec2 uResolution;
 uniform vec3 uPaletteFrom[4];
 uniform vec3 uPaletteTo[4];
 uniform vec4 uFlow;
+uniform vec4 uMaterials;
 out vec4 fragColor;
 ${common}
+${motionGLSL}
 float elevation(vec2 p,int layer){
   vec4 h=texture(uRelief,clamp(p/24.+.5,vec2(.001),vec2(.999)));
   vec2 b=layer==0?h.rg:h.ba;
@@ -158,12 +165,13 @@ vec3 conductorPoint(vec3 p){
 }
 float singleDistance(vec3 p,int id,int layer){
   if(id==2){
+    p.xz=motionPoint(p.xz,layer);
     vec3 q=conductorPoint(p)*2.25;
     float gyroid=dot(sin(q),cos(q.yzx));
     float shell=abs(gyroid)/6.8-(.064+uBands.x*.024);
     return max(shell,max(p.y-1.35,-p.y-1.9));
   }
-  return (p.y-elevation(p.xz,layer))*.28;
+  return (p.y-elevation(p.xz,layer))*(id>=10?.16:.28);
 }
 bool morphing(){return uWorlds.x>0.&&uWorlds.y>0.&&uWorlds.x!=uWorlds.y&&uWorlds.z>0.&&uWorlds.z<1.;}
 float ease5(float t){t=clamp(t,0.,1.);return t*t*t*(t*(t*6.-15.)+10.);}
@@ -174,24 +182,7 @@ float morphWeight(vec3 p){
 }
 // Intermediate shapes are continuous deformations of the existing surface.
 // They share its normals, material, shadows and audio response.
-float transitionRelief(vec3 p){
-  vec2 axis=normalize(uFlow.xy);
-  vec2 q=vec2(dot(p.xz,axis),dot(p.xz,vec2(-axis.y,axis.x)));
-  float phase=uWorlds.z,envelope=transitionEnvelope();
-  float gain=.48+uBands.x*.16;
-  float source=uWorlds.x;
-  if(source==1.||source==3.){
-    float front=mix(-5.,5.,phase);
-    float d=q.y-front+sin(q.x*.38+uFlow.z)*.6;
-    return sin(d*1.7)*exp(-d*d*.33)*gain*envelope;
-  }
-  if(source==2.||source==5.){
-    float d=length(q)-(.5+phase*5.5);
-    return cos(d*2.4)*exp(-d*d*.56)*gain*envelope;
-  }
-  float d=q.x-mix(-5.,5.,phase)+sin(q.y*.43+uFlow.z)*.75;
-  return sin(d*1.2)*exp(-d*d*.24)*gain*envelope;
-}
+${transitionGLSL}
 vec3 flowPoint(vec3 p,float direction){
   float envelope=transitionEnvelope();
   p.y-=transitionRelief(p);
@@ -222,12 +213,27 @@ float shadow(vec3 p,vec3 l,int id,int layer){
 }
 vec3 tone(vec3 c){return clamp((c*(2.51*c+.03))/(c*(2.43*c+.59)+.14),0.,1.);}
 void material(int id,vec3 p,vec3 n,vec3 v,float footprint,int layer,out vec3 albedo,out vec3 emission,out float rough,out float metal){
+  p.xz=motionPoint(p.xz,layer);
   vec2 q=p.xz;float grain=noise(q*105.);
   vec3 c0=pigment(0,layer),c1=pigment(1,layer),c2=pigment(2,layer),c3=pigment(3,layer);
   float ridge=.5+.5*sin(p.x*1.1+p.z*.6+uTime*.15);
   albedo=c1*.5;emission=vec3(0);
   rough=.36;metal=.7;
-  if(id==1){
+  if(id>=10){
+    float family=float(id),pattern=.5+.5*sin(q.x*(.4+family*.037)+q.y*.7+p.y*2.);
+    float contour=pow(.5+.5*sin(p.y*(12.+mod(family,5.)*3.)),12.);
+    albedo=mix(c0*.65,c1*.9,clamp(pattern*.55+(p.y+1.)*.2,0.,1.));
+    rough=layer==0?uMaterials.x:uMaterials.z;metal=layer==0?uMaterials.y:uMaterials.w;
+    albedo*=.88+grain*.18;
+    emission=mix(c2,c3,pattern)*contour*(.025+uBands.y*.12)*max(n.y,0.);
+    if(id==10){albedo*=.7+fbm(q*7.)*.6;emission*=.15;}
+    if(id==12||id==23){float petals=.5+.5*cos(atan(q.y,q.x)*6.+uTime*.24);emission+=c2*pow(petals,8.)*pow(max(n.y,0.),5.)*(.02+uBands.z*.1);}
+    if(id==13||id==17){float weave=sin(q.x*150.)*sin(q.y*147.);albedo*=.95+weave*.05*exp(-footprint*150.);}
+    if(id==14){albedo=mix(c0*.7,c1*.9,.5+.5*sin(p.y*5.+q.x*.4));emission*=.25;}
+    if(id==15||id==22)emission+=c3*pow(max(n.y,0.),10.)*(.035+uBands.y*.15);
+    if(id==16||id==19)albedo=mix(albedo,c2*.75,pow(1.-max(dot(n,v),0.),3.)*.4);
+    if(id==20)emission+=c2*pow(.5+.5*sin(q.x*11.-q.y*10.+uTime),16.)*uBands.z*.14;
+  }else if(id==1){
     albedo=mix(c0*.6,c1,smoothstep(.05,.95,ridge));
     float engraving=(p.x*.93+p.z*.31+sin(p.z*.6-uTime*.48)*1.3)*95.;
     float grooves=.85+.15*sin(engraving)*exp(-footprint*95.*.5);
@@ -303,7 +309,7 @@ vec3 renderSculpture(int id,vec2 uv,int layer){
   vec3 rd=normalize(forward+screen.x*right*.37+screen.y*up*.37);
   float travel=2.5,previousTravel=2.5,d=1.;vec3 p=eye;
   bool hit=false;
-  for(int i=0;i<86;i++){
+  for(int i=0;i<128;i++){
     p=eye+rd*travel;d=distanceField(p,id,layer);
     if(d<.0045){hit=true;break;}
     previousTravel=travel;travel+=clamp(d*.88,.009,.65);
@@ -386,7 +392,7 @@ export class UniverseRenderer {
     gl.attachShader(program,compile(gl.VERTEX_SHADER,vertex));
     gl.attachShader(program,compile(gl.FRAGMENT_SHADER,universeFragment));gl.linkProgram(program);
     if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program));
-    this.locations=Object.fromEntries(['uTime','uBands','uTransients','uWorlds','uResolution','uPaletteFrom[0]','uPaletteTo[0]','uFlow'].map(n=>[n,gl.getUniformLocation(program,n)]));
+    this.locations=Object.fromEntries(['uTime','uBands','uTransients','uWorlds','uResolution','uPaletteFrom[0]','uPaletteTo[0]','uFlow','uMotionFrom','uMotionTo','uMaterials'].map(n=>[n,gl.getUniformLocation(program,n)]));
     gl.useProgram(program);gl.uniform1i(gl.getUniformLocation(program,'uSurface'),0);gl.uniform1i(gl.getUniformLocation(program,'uSignal'),1);gl.uniform1i(gl.getUniformLocation(program,'uRelief'),2);
     this.surface=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,this.surface);
     this.configureTexture();
@@ -398,7 +404,7 @@ export class UniverseRenderer {
     gl.attachShader(this.fieldProgram,compile(gl.FRAGMENT_SHADER,reliefFragment));gl.linkProgram(this.fieldProgram);
     if(!gl.getProgramParameter(this.fieldProgram,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(this.fieldProgram));
     gl.useProgram(this.fieldProgram);gl.uniform1i(gl.getUniformLocation(this.fieldProgram,'uSignal'),1);
-    this.fieldLocations=Object.fromEntries(['uTime','uBands','uTransients','uWorlds'].map(n=>[n,gl.getUniformLocation(this.fieldProgram,n)]));
+    this.fieldLocations=Object.fromEntries(['uTime','uBands','uTransients','uWorlds','uMotionFrom','uMotionTo'].map(n=>[n,gl.getUniformLocation(this.fieldProgram,n)]));
     this.fieldTexture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,this.fieldTexture);this.configureTexture();
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,atlasSize,atlasSize,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
     this.fieldBuffer=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,this.fieldBuffer);
@@ -441,6 +447,7 @@ export class UniverseRenderer {
   paletteFor(world,time) {return this.palettes.sample(world,time);}
   render(time,bands,transients,from,to,blend) {
     const gl=this.gl,l=this.locations;
+    const motionFrom=motionSignature(from,time,this.palettes.seed),motionTo=motionSignature(to,time,this.palettes.seed);
     if(from!==to&&blend<1){
       const key=`${from}:${to}`;
       if(this.flowKey!==key){this.flow=this.palettes.flow(from,to,time);this.flowKey=key;}
@@ -451,6 +458,7 @@ export class UniverseRenderer {
       gl.bindFramebuffer(gl.FRAMEBUFFER,this.fieldBuffer);gl.viewport(0,0,atlasSize,atlasSize);
       gl.disable(gl.DEPTH_TEST);gl.useProgram(this.fieldProgram);
       const f=this.fieldLocations;
+      gl.uniform4fv(f.uMotionFrom,motionFrom);gl.uniform4fv(f.uMotionTo,motionTo);
       gl.uniform1f(f.uTime,time);gl.uniform3fv(f.uBands,bands);gl.uniform3fv(f.uTransients,transients);gl.uniform3f(f.uWorlds,from,to,blend);
       gl.drawArrays(gl.TRIANGLES,0,3);
     }
@@ -459,6 +467,7 @@ export class UniverseRenderer {
     gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.surface);
     gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,this.signalTexture);gl.activeTexture(gl.TEXTURE0);
     gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,this.fieldTexture);gl.activeTexture(gl.TEXTURE0);
+    gl.uniform4fv(l.uMotionFrom,motionFrom);gl.uniform4fv(l.uMotionTo,motionTo);gl.uniform4f(l.uMaterials,roughness[from],metalness[from],roughness[to],metalness[to]);
     gl.uniform1f(l.uTime,time);gl.uniform3fv(l.uBands,bands);gl.uniform3fv(l.uTransients,transients);
     gl.uniform3fv(l['uPaletteFrom[0]'],this.paletteFor(from,time));gl.uniform3fv(l['uPaletteTo[0]'],this.paletteFor(to,time));gl.uniform4fv(l.uFlow,this.flow);
     gl.uniform3f(l.uWorlds,from,to,blend);gl.uniform2f(l.uResolution,this.size,this.size);

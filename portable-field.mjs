@@ -1,3 +1,6 @@
+import {extraHeight} from './video-fields.mjs';
+import {motionPoint} from './video-styles.mjs';
+const moved=new Float64Array(2);
 const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
 const mix=(a,b,t)=>a+(b-a)*t;
 const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a));return t*t*(3-2*t);};
@@ -15,7 +18,8 @@ function mineral(x,z){
 }
 // The mobile path evaluates one height per mesh vertex on the CPU. Its shaders
 // contain no ray marching, vertex textures, instancing or float framebuffers.
-export function sampleHeight(id,x,z,t,bands,waveform){
+export function sampleHeight(id,x,z,t,bands,waveform,motion){
+ if(motion){motionPoint(x,z,t,bands,motion,moved);x=moved[0];z=moved[1];}
  const [bass,mid,high]=bands;let qx,qz;
  if(id===0){const a=Math.floor(x*5)/5,b=Math.floor(z*5)/5;return Math.sin(a*.8+t*.5)*.65+Math.sin(b*.95-t*.4)*.5+hash(Math.floor(x*5),Math.floor(z*5))*(.25+mid*.4)-.2;}
  if(id===1){
@@ -53,11 +57,13 @@ export function sampleHeight(id,x,z,t,bands,waveform){
   qx=x*.765+z*.644;qz=-x*.644+z*.765;const drift= qz*.53+Math.sin(qx*.46-t*.31)*1.1+fbm(qx*.54+t*.07,qz*.54-t*.045)*(1+mid*.42),levels=drift*2.6,terrace=(Math.floor(levels)+smooth(.67,.95,levels-Math.floor(levels)))/2.6;
   return Math.sin(terrace*1.55+t*.26)*(1.35+bass*.35)+Math.sin(qx*.38+t*.2)*.4;
  }
+ if(id>=10)return extraHeight(id,x,z,t,bands,fbm);
  const a=Math.hypot(x+2-Math.sin(t*.23)*.8,z+1.4),b=Math.hypot(x-2.1,z-1-Math.cos(t*.2)*.7),c=Math.hypot(x+.6,z+3.2);
  return (Math.sin(a*3.6-t*1.7)+Math.sin(b*3.9-t*1.45)*.7+Math.sin(c*2.1+t*.8)*.35)*(.48+bass*.23)*(.75+.25*Math.cos(x*.35+z*.28-t*.3))+Math.sin(a*8-t*2)*Math.sin(b*7+t)*.035*(.4+high)+Math.sin(z*.5-t*.3)*.25;
 }
 export function surfaceWeight(x,z,phase){const p=clamp(phase),e=16*p*p*(1-p)*(1-p),t=clamp(p+(x*.027+Math.sin(z*.4)*.035)*e);return t*t*t*(t*(t*6-15)+10);}
 export function surfaceEmission(id,x,z,h,t,bands){
+ if(id>=10){const contour=Math.pow(.5+.5*Math.sin(h*(12+id%5*3)),12);return contour*(.025+bands[1]*.12)+(id===15||id===22?Math.max(0,h)*bands[1]*.045:0);}
  if(id===2)return Math.pow(1-Math.abs(Math.sin(x*6+z*7-t)),12)*(.35+bands[1]);
  if(id===5)return Math.pow(clamp((-h-.05)*1.5),3)*(.6+bands[0]);
  if(id===6)return Math.exp(-Math.abs(h+.5)*9)*(.12+bands[1]*.45);

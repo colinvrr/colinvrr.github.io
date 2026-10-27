@@ -1,11 +1,12 @@
-import { MetalShutter } from './shutter.mjs?v=16';
-import { StreetScene } from './model-scene.mjs?v=16';
-import { UniverseRenderer, universeNames } from './universes.mjs?v=10';
+import { WorldDeck } from './video-score.mjs';
+import { MetalShutter } from './shutter.mjs?v=20';
+import { StreetScene } from './model-scene.mjs?v=22';
+import { UniverseRenderer, universeNames } from './universes.mjs?v=22';
 import { createMediaControls } from './media-controls.mjs';
 import { MechanicalFeedback } from './mechanics.mjs?v=13';
-import { PortableRenderer } from './portable-renderer.mjs';
+import { PortableRenderer } from './portable-renderer.mjs?v=22';
 import { createTrackClock } from './track-clock.mjs?v=13';
-import { applyPlace } from './places.mjs?v=16';
+import { applyPlace } from './places.mjs?v=20';
 
 let canvas = document.querySelector('#canvas');
 const surface = document.querySelector('#surface');
@@ -22,7 +23,7 @@ const shareButton = document.querySelector('#share');
 const shareLabel = document.querySelector('#share-label');
 const mixButton = document.querySelector('#mix');
 const mixLed = document.querySelector('#mix-led');
-const track = {src:null, file:null,duration:0};
+const track = {src:null, file:null,duration:0,title:'MIX'};
 const trackClock=createTrackClock(document.querySelector('#mix-time'));
 const feedback=new MechanicalFeedback();
 feedback.setVisible(!document.hidden);
@@ -34,10 +35,10 @@ const mediaControls=createMediaControls({
 });
 const shutter = new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
 let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false,clockArmed=false;
-const mixesReady = fetch('./mixes.json?v=12').then(response => {
+const mixesReady = fetch('./mixes.json?v=20').then(response => {
   if(!response.ok)throw new Error('Mix configuration unavailable');
   return response.json();
-}).then(config => { track.src=config.src || null;if(!track.file){track.duration=Number(config.duration)||0;trackClock.update(null,track.duration);} })
+}).then(config => { track.src=config.src || null;track.title=config.title||'MIX';if(!track.file){track.duration=Number(config.duration)||0;trackClock.update(null,track.duration);} })
 .catch(() => { /* Local file loading remains available without a configuration. */ });
 function syncControls() {
   if(playing)hasStarted=true;
@@ -49,7 +50,7 @@ function syncControls() {
   mixButton.setAttribute('aria-label',active ? 'Mettre le mix en pause et fermer le volet' : 'Lancer le mix');
   mixLed.dataset.on=String(active);
   mixLed.setAttribute('aria-label',`MIX ${active?'en lecture':'à l’arrêt'}`);
-  mediaControls.update(mode==='file'?media:null,playing,track.file?.name?.replace(/\.[^.]+$/,'')||'MIX');
+  mediaControls.update(mode==='file'?media:null,playing,track.file?.name?.replace(/\.[^.]+$/,'')||track.title||'MIX');
   trackClock.update(mode==='file'?media:null,track.duration);
   trackClock.setPower(clockArmed&&(mode==='file'||mode==='idle'));
 }
@@ -63,7 +64,8 @@ function requestFile() {
   picker.click();
 }
 const contextOptions={antialias:false,alpha:false,powerPreference:'default'};
-let graphicsLevel=/Android/i.test(navigator.userAgent||'')||navigator.userAgentData?.platform==='Android'?1:0;
+const mobilePlatform=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'')||navigator.userAgentData?.mobile===true||navigator.userAgentData?.platform==='Android'||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)||matchMedia('(max-width:600px)').matches;
+let graphicsLevel=mobilePlatform?1:0;
 function acquireContext(target){
   if(graphicsLevel===2)return null;
   const kinds=graphicsLevel===0?['webgl2','webgl','experimental-webgl']:['webgl','experimental-webgl'];
@@ -331,10 +333,15 @@ const sceneSequence=[0,3,1,4,2];
 let sceneCursor=Math.floor(Math.random()*sceneSequence.length);
 let sceneFrom=sceneSequence[sceneCursor],sceneTo=sceneFrom,sceneBlend=1,sceneHold=0,sceneTransition=0;
 let phraseAttacks=0,audioClock=0,lastPhraseAttack=-10;
-// Visit every world once before returning to Hertz. The relief keeps its own
-// five compositions while the outer score moves between different media.
-const universeSequence=[1,6,2,8,4,7,3,9,5,0];
-let universeCursor=0,universeFrom=1,universeTo=1,universeBlend=1;
+// A fresh, complete tour with an eight-world cooldown across tour boundaries.
+let initialWorld=Math.floor(Math.random()*universeNames.length);
+try{
+  const saved=sessionStorage.getItem('form:video-start'),previous=Number(saved);
+  if(saved!==null&&initialWorld===previous)initialWorld=(initialWorld+1+Math.floor(Math.random()*(universeNames.length-1)))%universeNames.length;
+  sessionStorage.setItem('form:video-start',String(initialWorld));
+}catch{}
+const worldDeck=new WorldDeck(universeNames.length,{start:initialWorld});
+let universeFrom=initialWorld,universeTo=initialWorld,universeBlend=1;
 let universeHold=0,universeTransition=0,universeAttacks=0;
 function advanceUniverse(dt) {
   if(universeBlend<1) {
@@ -346,8 +353,7 @@ function advanceUniverse(dt) {
   universeHold+=dt*(energy>.035?1:.25);
   if((universeHold>7 && universeAttacks>=6)||universeHold>10.5) {
     universeFrom=universeTo;
-    universeCursor=(universeCursor+1)%universeSequence.length;
-    universeTo=universeSequence[universeCursor];
+    universeTo=worldDeck.next();
     universeBlend=0;universeTransition=0;universeHold=0;universeAttacks=0;
   }
 }
@@ -616,7 +622,7 @@ function initializeGraphics() {
       if(previous?.flow){universeRenderer.flow.set(previous.flow);universeRenderer.flowKey=previous.flowKey;}
       graphicsSeed=universeRenderer.palettes.seed;
     }else{
-      portableRenderer=new PortableRenderer(canvas,gl,{seed:graphicsSeed});universeRenderer=null;
+      portableRenderer=new PortableRenderer(canvas,gl,{seed:graphicsSeed,grid:mobilePlatform?112:160});if(previous?.flow){portableRenderer.flow.set(previous.flow);portableRenderer.flowKey=previous.flowKey;}universeRenderer=null;
       graphicsSeed=portableRenderer.palettes.seed;
     }
     canvas.dataset.renderer=gl?(graphicsLevel===0?'raymarch':'surface-mesh'):'canvas2d';checkOutput=true;
@@ -712,6 +718,7 @@ function frame(now) {
   reconcilePlayback();
   if(document.hidden){last=now;return;}
   const dt=Math.min((now-last)/1000,.06);last=now;
+  scene.tick?.(dt,now);
   if(!visualPaused) {
     analyse(dt);
     visualTime+=dt*(.45+bass*.55+mid*.7+high*.35)*(reducedMotion.matches?.2:1);

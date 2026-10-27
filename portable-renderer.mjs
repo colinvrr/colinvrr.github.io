@@ -1,3 +1,4 @@
+import {motionSignature,transitionRelief,roughness,metalness} from './video-styles.mjs';
 import {PaletteTimeline} from './palettes.mjs';
 import {sampleHeight,surfaceWeight,surfaceEmission} from './portable-field.mjs';
 const STRIDE=11;
@@ -11,7 +12,7 @@ function viewProjection(){
 }
 export class PortableRenderer {
  constructor(canvas,gl,{seed,grid=160}={}){
-  this.canvas=canvas;this.gl=gl;this.palettes=new PaletteTimeline(seed);this.matrix=viewProjection();this.size=0;this.slow=0;
+  this.canvas=canvas;this.gl=gl;this.palettes=new PaletteTimeline(seed);this.matrix=viewProjection();this.size=0;this.slow=0;this.flowKey=null;this.flow=new Float32Array([1,0,0,.4]);
   this.ctx=gl?null:canvas.getContext('2d',{alpha:false});
   if(!gl&&!this.ctx)throw Error('No graphics context available');
   this.setGrid(gl?grid:80);
@@ -67,11 +68,13 @@ void main(){
  resize(size){this.size=size;}
  geometry(time,bands,transients,from,to,blend,waveform){
   const n=this.grid,row=n+1,step=24/n,h=this.heights,v=this.vertices,a=this.palettes.sample(from,time),b=this.palettes.sample(to,time),phase=clamp(blend),envelope=16*phase*phase*(1-phase)*(1-phase),morph=from!==to&&phase>0&&phase<1;
+  const motionFrom=motionSignature(from,time,this.palettes.seed),motionTo=motionSignature(to,time,this.palettes.seed);
+  if(from!==to&&phase<1){const key=`${from}:${to}`;if(this.flowKey!==key){this.flow=this.palettes.flow(from,to,time);this.flowKey=key;}}else this.flowKey=null;
   for(let z=0;z<=n;z++)for(let x=0;x<=n;x++){
    const px=x*step-12,pz=z*step-12,i=z*row+x;
    const w=from===to?1:surfaceWeight(px,pz,phase),flow=morph?Math.sin(pz*.42+time*.04)*envelope*.35:0;
-   const first=w<1?sampleHeight(from,px+flow,pz,time,bands,waveform):0,second=w>0?sampleHeight(to,px-flow,pz,time,bands,waveform):0;
-   h[i]=mix(first,second,w)+(morph?Math.sin((pz+5-phase*10)*1.7)*Math.exp(-((pz+5-phase*10)**2)*.33)*(.48+bands[0]*.16)*envelope:0);
+   const first=w<1?sampleHeight(from,px+flow,pz,time,bands,waveform,motionFrom):0,second=w>0?sampleHeight(to,px-flow,pz,time,bands,waveform,motionTo):0;
+   h[i]=mix(first,second,w)+(morph?transitionRelief(px,pz,phase,bands[0],this.flow):0);
   }
   for(let z=0;z<=n;z++)for(let x=0;x<=n;x++){
    const i=z*row+x,j=i*STRIDE,px=x*step-12,pz=z*step-12,height=h[i],left=h[z*row+Math.max(0,x-1)],right=h[z*row+Math.min(n,x+1)],back=h[Math.max(0,z-1)*row+x],front=h[Math.min(n,z+1)*row+x];
@@ -91,7 +94,7 @@ void main(){
   if(this.vao)gl.bindVertexArray(this.vao);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,this.size,this.size);gl.enable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.disable(gl.CULL_FACE);gl.clearColor(p[0]*.06,p[1]*.06,p[2]*.06,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   gl.useProgram(this.program);gl.bindBuffer(gl.ARRAY_BUFFER,this.vertexBuffer);gl.bufferSubData(gl.ARRAY_BUFFER,0,this.vertices);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.indexBuffer);
-  const rough=[.55,.26,.25,.21,.32,.82,.19,.14,.65,.27],metal=[.55,.9,.92,.96,.75,.12,.62,.97,.3,.86];
+  const rough=roughness,metal=metalness;
   gl.uniform3fv(this.uniforms.uGlow,p.subarray(6,9));gl.uniform3fv(this.uniforms.uHighlight,p.subarray(9,12));gl.uniform2f(this.uniforms.uMaterial,mix(rough[from],rough[to],blend),mix(metal[from],metal[to],blend));
   gl.drawElements(gl.TRIANGLES,this.indices.length,gl.UNSIGNED_SHORT,0);
   if(animate){
