@@ -13,13 +13,13 @@
 <meta property="og:url" content="https://colinvrr.github.io/">
 <link rel="icon" href="data:,">
 <link rel="modulepreload" href="./vendor/babylon.min.js">
-<link rel="modulepreload" href="./model-scene.mjs?v=30">
+<link rel="modulepreload" href="./model-scene.mjs?v=31">
 <link rel="modulepreload" href="./universes.mjs?v=26">
-<link rel="preload" href="./mixes.json?v=25" as="fetch" crossorigin>
-<link rel="stylesheet" href="./style.css?v=30">
+<link rel="preload" href="./mixes.json?v=31" as="fetch" crossorigin>
+<link rel="stylesheet" href="./style.css?v=31">
 </head>
 <body>
-<audio id="preloaded-mix" src="./audio/sofasurfs-minimix.mp3" preload="auto" crossorigin="anonymous" hidden></audio>
+<audio id="preloaded-mix" src="./audio/sofasurfs-minimix.mp3" preload="metadata" crossorigin="anonymous" hidden></audio>
 <noscript><style>main{visibility:visible!important}#startup{display:none}</style>Activez JavaScript pour lancer le lecteur.</noscript>
 <main>
 <section class="machine" aria-label="Lecteur audiovisuel colinvrr">
@@ -49,10 +49,11 @@
 </div>
 </div>
 </section>
+<button id="scene-iris" class="scene-iris" type="button" aria-label="Passer la transition vers le prochain lieu" hidden></button>
 <input id="file" type="file" accept="audio/*,video/*,.flac,.opus,.ogg,.m4a,.wav,.mp3,.aiff" hidden>
 <p id="instructions" class="sr-only">Actionnez le levier MIX pour écouter le morceau et ouvrir le volet. Pause fige le son et l’image. Le bouton carré arrête la lecture, remet le mix au début et referme le volet. Désactiver le levier met le mix en pause et referme le volet. Cliquer sur le carré lance ou met en pause la lecture. Vous pouvez déposer un autre fichier audio sur le carré pour l’écouter localement. Espace : lecture ou pause. M : microphone. S : son d’un onglet. F : plein écran. Échap : arrêter et fermer le volet.</p>
 <p id="status" class="sr-only" role="status" aria-live="polite">Volet fermé. MIX à l’arrêt.</p>
 </main>
-<script type="module" src="./app.js?v=30"></script>
+<script type="module" src="./app.js?v=31"></script>
 </body>
 </html>

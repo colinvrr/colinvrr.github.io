@@ -1,18 +1,20 @@
 import { WorldDeck } from './video-score.mjs';
 import { MetalShutter } from './shutter.mjs?v=20';
-import { StreetScene } from './model-scene.mjs?v=30';
+import { StreetScene } from './model-scene.mjs?v=31';
 import { UniverseRenderer, universeNames } from './universes.mjs?v=26';
 import { createMediaControls } from './media-controls.mjs';
 import { MechanicalFeedback } from './mechanics.mjs?v=13';
 import { createTrackClock } from './track-clock.mjs?v=13';
-import { applyPlace } from './places.mjs?v=20';
+import { applyPlace, places } from './places.mjs?v=31';
+import { CatPassage } from './scene-passage.mjs?v=31';
 
 let canvas = document.querySelector('#canvas');
 const surface = document.querySelector('#surface');
 const visualWindow = document.querySelector('#visual-window');
 const graphicsNotice=document.querySelector('#graphics-notice');
-const place = applyPlace(surface);
-const scene = new StreetScene(document.querySelector('#model-canvas'),visualWindow,place,{frameElement:surface});
+const machine=document.querySelector('.machine');
+let place = applyPlace(surface);
+let scene = new StreetScene(document.querySelector('#model-canvas'),visualWindow,place,{frameElement:surface});
 surface.dataset.placeReady='true';
 const picker = document.querySelector('#file');
 const status = document.querySelector('#status');
@@ -30,24 +32,32 @@ feedback.setVisible(!document.hidden);
 const mediaControls=createMediaControls({
   getAudio:()=>mode==='file'?media:null,
   play:resumePlayback,
-  pause:()=>{++inputGeneration;if(mode!=='idle'||mixStarting)pausePlayback();else{clockArmed=false;syncControls();}},
+  pause:()=>{++inputGeneration;if(passage?.active||mode!=='idle'||mixStarting)pausePlayback();else{clockArmed=false;syncControls();}},
   stop:stopPlayback
 });
-const shutter = new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
+let shutter = new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
 let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false,clockArmed=false;
 let preparedAudio=null,mixStarting=false;
+let chapters=[],chapterIndex=0,passage=null,automaticStart=false;
+const audioNodes=new WeakMap();let mediaCleanup=[];
+function listenMedia(audio,event,listener){audio.addEventListener(event,listener);mediaCleanup.push(()=>audio.removeEventListener?.(event,listener));}
 let graphicsDirty=true;
-function prepareMixAudio(src){
-  const audio=document.getElementById?.('preloaded-mix')||new Audio();
+function prepareMixAudio(src,preferred){
+  const audio=preferred||document.getElementById?.('preloaded-mix')||new Audio();
   audio.crossOrigin='anonymous';audio.preload='auto';
   if(audio.getAttribute?.('src')!==src)audio.src=src;
   preparedAudio=audio;
   if(audio.networkState!==2)audio.load();
 }
-const mixesReady = fetch('./mixes.json?v=25').then(response => {
+const mixesReady = fetch('./mixes.json?v=31').then(response => {
   if(!response.ok)throw new Error('Mix configuration unavailable');
   return response.json();
-}).then(config => { track.src=config.src || null;track.title=config.title||'MIX';if(!track.file){track.duration=Number(config.duration)||0;trackClock.update(null,track.duration);if(track.src)prepareMixAudio(track.src);} })
+}).then(config => {
+ chapters=(Array.isArray(config.chapters)?config.chapters:[config]).filter(item=>item.src);
+ chapterIndex=Math.max(0,chapters.findIndex(item=>item.place===place.id));
+ const first=chapters[chapterIndex]||config;track.src=first.src||null;track.title=first.title||'MIX';
+ if(!track.file){track.duration=Number(first.duration)||0;trackClock.update(null,track.duration);if(track.src)prepareMixAudio(track.src);}
+})
 .catch(() => { /* Local file loading remains available without a configuration. */ });
 function syncControls() {
   graphicsDirty=true;
@@ -58,7 +68,7 @@ function syncControls() {
   const active=(playing && mode==='file')||mixStarting;
   mixButton.dataset.pending=String(mixStarting);
   mixButton.setAttribute('aria-checked',String(active));
-  mixButton.setAttribute('aria-label',active ? 'Mettre le mix en pause et fermer le volet' : 'Lancer le mix');
+  mixButton.setAttribute('aria-label',active ? (place.model==='groundfloor-apartment'?'Mettre le mix en pause':'Mettre le mix en pause et fermer le volet') : 'Lancer le mix');
   mixLed.dataset.on=String(active);
   mixLed.setAttribute('aria-label',`MIX ${active?'en lecture':'à l’arrêt'}`);
   mediaControls.update(mode==='file'?media:null,playing,track.file?.name?.replace(/\.[^.]+$/,'')||track.title||'MIX');
@@ -68,7 +78,7 @@ function syncControls() {
 function setShutter(open) {
   shutterOpen=open;
   surface.dataset.open=String(open);
-  shutter.setOpen(open);
+  if(place.model==='groundfloor-apartment')scene.setProgress(open?1:0);else shutter.setOpen(open);
   shutterUntil=performance.now()+2300;
 }
 function requestFile() {
@@ -388,6 +398,7 @@ async function audioGraph() {
   if(!analyser){analyser=context.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=.2;spectrum=new Float32Array(analyser.frequencyBinCount);waveform=new Float32Array(analyser.fftSize);}
 }
 function releaseSource(close=true) {
+  for(const clean of mediaCleanup)clean();mediaCleanup=[];
   mixStarting=false;
   if(close)clockArmed=false;
   const previousMedia=media;
@@ -406,6 +417,7 @@ function releaseSource(close=true) {
   syncControls();
 }
 function pausePlayback(close=false) {
+  if(passage?.active){passage.pause();setStatus('Passage en pause.');return;}
   mixStarting=false;
   if(close)clockArmed=false;
   playing=false;visualPaused=true;
@@ -413,14 +425,16 @@ function pausePlayback(close=false) {
   else if(context && mode!=='idle')context.suspend().catch(()=>{});
   if(close)setShutter(false);
   syncControls();
-  setStatus(close?'Mix arrêté. Volet fermé.':'Mix en pause. Son et image figés.');
+  setStatus(close&&place.model!=='groundfloor-apartment'?'Mix arrêté. Volet fermé.':'Mix en pause. Son et image figés.');
 }
 function stopPlayback() {
+  passage?.cancel();
   ++inputGeneration;
   releaseSource();
   setStatus('Lecture arrêtée. Mix remis au début et volet fermé.');
 }
 async function startMix() {
+  if(passage?.active){passage.skip();return;}
   const generation=++inputGeneration;
   clockArmed=true;mixStarting=true;syncControls();trackClock.setPower(true);
   try {
@@ -443,49 +457,83 @@ async function startMix() {
     if(track.file){objectURL=URL.createObjectURL(track.file);audio.src=objectURL;}
     else if(!audio.src){audio.crossOrigin='anonymous';audio.src=track.src;}
     audio.preload='auto';
-    for(const event of ['loadedmetadata','durationchange','timeupdate','seeking','seeked','ratechange'])audio.addEventListener(event,()=>{
+    for(const event of ['loadedmetadata','durationchange','timeupdate','seeking','seeked','ratechange'])listenMedia(audio,event,()=>{
       if(media!==audio)return;
       if(Number.isFinite(audio.duration)&&audio.duration>0)track.duration=audio.duration;
       mediaControls.position();trackClock.update(audio,track.duration);
     });
-    mediaSource=context.createMediaElementSource(audio);mediaSource.connect(analyser);analyser.connect(context.destination);
-    audio.addEventListener('playing',()=>{
+    mediaSource=audioNodes.get(audio);if(!mediaSource){mediaSource=context.createMediaElementSource(audio);audioNodes.set(audio,mediaSource);}mediaSource.connect(analyser);analyser.connect(context.destination);
+    listenMedia(audio,'playing',()=>{
       if(media!==audio)return;
       mixStarting=false;playing=true;visualPaused=false;setShutter(true);syncControls();
-      setStatus('MIX en lecture. Volet ouvert.');
+      setStatus(place.model==='groundfloor-apartment'?'Le mix de l’appartement est en lecture.':'MIX en lecture. Volet ouvert.');
     });
-    audio.addEventListener('pause',()=>{
+    listenMedia(audio,'pause',()=>{
       if(media!==audio)return;
       playing=false;visualPaused=true;syncControls();
     });
-    audio.addEventListener('waiting',()=>{
+    listenMedia(audio,'waiting',()=>{
       if(media!==audio)return;
       // Buffering is not an explicit pause: some WebViews omit a second playing event.
       setStatus('MIX en cours de chargement.');
     });
-    audio.addEventListener('ended',()=>{
+    listenMedia(audio,'ended',()=>{
       if(media!==audio)return;
+      const story=!track.file&&chapters.length>1;
       releaseSource();
-      setStatus('MIX terminé. Volet fermé.');
+      if(story)beginPassage(audio);else setStatus('MIX terminé. Volet fermé.');
     });
-    audio.addEventListener('error',()=>{
+    listenMedia(audio,'error',()=>{
       if(media!==audio)return;
       releaseSource();setStatus('Le mix ne peut pas être lu. Chargez un autre fichier audio.',true);
     });
     await audio.play();
     if(generation!==inputGeneration && media===audio)pausePlayback(true);
   } catch(error) {
-    if(generation===inputGeneration){releaseSource();setStatus('Lecture du mix impossible. Chargez un fichier audio compatible.',true);}
+    if(generation===inputGeneration){releaseSource();setStatus(automaticStart?'Le prochain mix est prêt. Appuyez sur Lecture pour le lancer.':'Lecture du mix impossible. Chargez un fichier audio compatible.',!automaticStart);}
   }
 }
+function beginPassage(audio){
+ if(disposed)return;
+ const nextIndex=(chapterIndex+1)%chapters.length,next=chapters[nextIndex];
+ const destination=places.find(item=>item.id===next.place);
+ if(!destination){setStatus('MIX terminé. Volet fermé.');return;}
+ passage?.dispose();
+ passage=new CatPassage({getScene:()=>scene,machine,mask:document.querySelector('#scene-iris'),reduced:()=>reducedMotion.matches,visible:()=>!document.hidden,
+  onSwap:async()=>{
+   const previousScene=scene,engine=scene.engine,version=passage.version;
+   const modelCanvas=document.querySelector('#model-canvas');modelCanvas.style.transform='';modelCanvas.style.transformOrigin='';
+   let candidate;
+   try{
+    candidate=new StreetScene(modelCanvas,visualWindow,destination,{frameElement:surface,engine});await candidate.ready;
+   }catch(error){candidate?.dispose({keepEngine:!!engine});previousScene.render?.();throw error;}
+   if(!passage.active||passage.version!==version){
+    candidate.dispose({keepEngine:!!engine});previousScene.canvas.dataset.performer=previousScene.dj?'dj':'none';previousScene.canvas.dataset.ready='true';previousScene.render?.();return;
+   }
+   shutter.dispose();previousScene.dispose({keepEngine:!!engine});scene=candidate;
+   chapterIndex=nextIndex;place=destination;
+   surface.dataset.place=place.id;surface.setAttribute('aria-label',`${place.label}, lire ou mettre en pause le mix`);
+   shutter=new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
+   track.src=next.src;track.title=next.title||'MIX';track.duration=Number(next.duration)||0;track.file=null;
+   visualTime=0;shapePhase=0;graphicsDirty=true;checkOutput=true;checkedWorld=null;
+   prepareMixAudio(track.src,audio);syncControls();await scene.ready;if(place.model!=='groundfloor-apartment'&&!graphicsReady)prepareGraphics();
+  },
+  onComplete:async()=>{setStatus('Le prochain lieu est prêt.');automaticStart=true;try{await startMix();}finally{automaticStart=false;}},
+  onError:error=>{console.error(error);setStatus('Le prochain lieu n’a pas pu être chargé. Vous pouvez relancer la lecture.',true);}
+ });
+ setStatus('Le chat vous accompagne vers le prochain lieu.');passage.start();
+}
+
 async function loadFile(file) {
   if(!file)return;
+  passage?.cancel();
   releaseSource(false);
   track.file=file;
   track.duration=0;trackClock.update(null,0);
   return startMix();
 }
 async function resumePlayback() {
+  if(passage?.active){passage.resume();return;}
   if(media && mode==='file')return startMix();
   if(stream && mode!=='idle') {
     try{await context.resume();playing=true;visualPaused=false;setShutter(true);syncControls();setStatus('Source audio en lecture.');}
@@ -495,6 +543,7 @@ async function resumePlayback() {
   return startMix();
 }
 async function liveInput(kind) {
+  passage?.cancel();
   const generation=++inputGeneration;
   if(mode===kind){releaseSource();setStatus('Source déconnectée. Volet fermé.');return;}
   let pendingStream;
@@ -581,7 +630,7 @@ surface.addEventListener('click',()=>{feedback.unlock();if(playing)pausePlayback
 for(const [button,kind] of [[mixButton,'lever'],[stopButton,'stop'],[pauseButton,'pause'],[playButton,'play'],[shareButton,'share']])button.addEventListener('click',()=>{feedback.play(kind);});
 picker.addEventListener('change',()=>{loadFile(picker.files[0]);picker.value='';});
 playButton.addEventListener('click',resumePlayback);
-pauseButton.addEventListener('click',()=>{++inputGeneration;if(mode!=='idle'||mixStarting)pausePlayback();else{clockArmed=false;syncControls();}});
+pauseButton.addEventListener('click',()=>{++inputGeneration;if(passage?.active||mode!=='idle'||mixStarting)pausePlayback();else{clockArmed=false;syncControls();}});
 stopButton.addEventListener('click',stopPlayback);
 shareButton.addEventListener('click',shareSite);
 mixButton.addEventListener('click',()=>{
@@ -595,6 +644,7 @@ window.addEventListener('keydown',async event=>{
   if(event.ctrlKey||event.metaKey||event.altKey||event.repeat)return;
   const key=event.key.toLowerCase();
   if(key===' '){
+    if(passage?.active){event.preventDefault();if(passage.paused)passage.resume();else passage.pause();return;}
     if(event.target.closest('button') && event.target!==surface)return;
     event.preventDefault();feedback.unlock();if(playing)pausePlayback();else resumePlayback();
   }
@@ -718,7 +768,8 @@ function frame(now) {
   reconcilePlayback();
   if(document.hidden){last=now;return;}
   const dt=Math.min((now-last)/1000,.06);last=now;
-  scene.tick?.(dt,now);
+  if(passage?.active){passage.tick(dt);return;}
+  scene.tick?.(dt,now,{playing:!visualPaused,bands:[bass,mid,high]});
   if(!visualPaused) {
     graphicsDirty=true;
     analyse(dt);
@@ -727,6 +778,7 @@ function frame(now) {
     advanceScene(dt*(reducedMotion.matches?.2:1));
     advanceUniverse(dt*(reducedMotion.matches?.2:1));
   }
+  if(place.model==='groundfloor-apartment')return;
   if(!graphicsReady)return;
   if(gl?.isContextLost()){scheduleGraphicsRecovery();return;}
   if(!shutterOpen&&now>shutterUntil)return;
@@ -749,7 +801,7 @@ graphicsObserver?.observe(visualWindow);
 window.addEventListener('resize',invalidateGraphics);
 queueFrame();
 function prepareGraphics(){
-  if(disposed)return;
+  if(disposed||place.model==='groundfloor-apartment')return;
   initializeGraphics();
   if(graphicsReady){try{drawGraphics();}catch(error){console.error(error);}}
 }
@@ -775,5 +827,5 @@ window.addEventListener('pageshow',wakeGraphics);
 window.addEventListener('pagehide',event=>{
   if(event.persisted)return;
   disposed=true;cancelAnimationFrame(animationRequest);clearTimeout(graphicsRestoreTimer);graphicsObserver?.disconnect();
-  ++inputGeneration;releaseSource();shutter.dispose();scene.dispose();feedback.dispose();mediaControls.dispose();context?.close();
+  ++inputGeneration;passage?.dispose();releaseSource();shutter.dispose();scene.dispose();feedback.dispose();mediaControls.dispose();context?.close();
 });

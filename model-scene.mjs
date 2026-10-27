@@ -1,3 +1,4 @@
+import {buildApartment, ApartmentDJ} from './apartment-scene.mjs?v=31';
 import * as B from './vendor/babylon.min.js';
 import { buildNeighbors } from './street-neighbors.mjs?v=18';
 import { FACADES, centeredBays } from './facade-layout.mjs';
@@ -46,11 +47,11 @@ function dressedBox(w,h,d,b){
 }
 
 export class StreetScene {
- constructor(canvas,windowElement,place,{frameElement=canvas}={}){
+ constructor(canvas,windowElement,place,{frameElement=canvas,engine:sharedEngine}={}){
   this.frameElement=frameElement;
-  this.api=B;this.canvas=canvas;this.window=windowElement;this.place=place;this.progress=0;this.records=[];this.blades=[];this.staticMeshes=[];this.textureCache=new Map();this.matCache=new Map();this.mapIds=new WeakMap();this.nextMapId=0;this.disposed=false;this.maps=materialMaps();this.paintCanvas=graffitiTexture().image;
+  this.api=B;this.canvas=canvas;this.canvas.dataset.ready='false';this.window=windowElement;this.place=place;this.progress=0;this.records=[];this.blades=[];this.staticMeshes=[];this.textureCache=new Map();this.matCache=new Map();this.mapIds=new WeakMap();this.nextMapId=0;this.disposed=false;this.maps=materialMaps();this.paintCanvas=graffitiTexture().image;
   try{
-   this.engine=new B.Engine(canvas,true,{alpha:true,preserveDrawingBuffer:true,stencil:false});
+   this.engine=sharedEngine||new B.Engine(canvas,true,{alpha:true,preserveDrawingBuffer:true,stencil:false});
    this.scene=new B.Scene(this.engine);this.scene.useRightHandedSystem=true;this.scene.clearColor=new B.Color4(0,0,0,0);this.scene.ambientColor=new B.Color3(.13,.14,.16);
    this.scene.imageProcessingConfiguration.toneMappingEnabled=true;this.scene.imageProcessingConfiguration.toneMappingType=B.ImageProcessingConfiguration.TONEMAPPING_ACES;this.scene.imageProcessingConfiguration.exposure=1.12;this.scene.imageProcessingConfiguration.contrast=1.08;
    this.camera=new B.FreeCamera('fixed-front',new B.Vector3(0,0,3000),this.scene);this.camera.setTarget(B.Vector3.Zero());this.camera.mode=B.Camera.PERSPECTIVE_CAMERA;this.camera.fov=.43;this.camera.position.z=H/(2*Math.tan(this.camera.fov/2))+33;this.camera.minZ=10;this.camera.maxZ=6500;
@@ -59,7 +60,7 @@ export class StreetScene {
    this.shadows=new B.ShadowGenerator(2048,sun);this.shadows.useContactHardeningShadow=true;this.shadows.contactHardeningLightSizeUVRatio=.045;this.shadows.filteringQuality=B.ShadowGenerator.QUALITY_MEDIUM;this.shadows.bias=.0002;this.shadows.normalBias=.45;this.shadows.setDarkness(.18);
    this.environment=this.createEnvironment();
   }catch(error){this.scene?.dispose();this.engine?.dispose();this.engine=null;this.setupCanvas();}
-  this.canvas.dataset.renderer=this.engine?'modeled-pbr':'canvas2d';this.canvas.dataset.lighting='winter-golden-hour';this.build();this.cat=new StreetCat(this);
+  this.canvas.dataset.renderer=this.engine?'modeled-pbr':'canvas2d';this.canvas.dataset.lighting='winter-golden-hour';this.build();this.cat=new StreetCat(this);this.dj=place?.model==='groundfloor-apartment'?new ApartmentDJ(this):null;this.canvas.dataset.performer=this.dj?'dj':'none';this.canvas.dataset.djTime='0';
   this.onLost=event=>{event.preventDefault();this.switchToCanvas();};this.canvas.addEventListener('webglcontextlost',this.onLost);
   this.observer=new ResizeObserver(()=>this.resize());this.observeLayout();this.resize();
   this.ready=new Promise(resolve=>{const finish=()=>{if(!this.disposed){this.render();if(this.engine)this.shadows.getShadowMap().refreshRate=0;this.canvas.dataset.ready='true';}resolve();};if(this.engine)this.scene.executeWhenReady(finish);else finish();});
@@ -75,10 +76,14 @@ export class StreetScene {
  }
  texture(image){if(!this.engine||!image)return null;if(this.textureCache.has(image))return this.textureCache.get(image);const tex=new B.DynamicTexture('local-surface',{width:image.width,height:image.height},this.scene,true);tex.getContext().drawImage(image,0,0);tex.hasAlpha=true;tex.anisotropicFilteringLevel=8;tex.update(true);this.textureCache.set(image,tex);return tex;}
  mat(color,map,kind='stone'){
-  if(!this.engine)return null;if(map&&!this.mapIds.has(map))this.mapIds.set(map,++this.nextMapId);const key=color+':'+(map?this.mapIds.get(map):'')+':'+kind;if(this.matCache.has(key))return this.matCache.get(key);
+  if(!this.engine)return null;
+  if(this.place?.model==='groundfloor-apartment'&&kind==='wood')color=({'#343e3d':'#344c50','#b5b4a7':'#71908b','#c5c3b6':'#b7c4bc','#cfcdc0':'#9aac9f','#b8b9ae':'#8a9e95'})[color]||color;
+  if(map&&!this.mapIds.has(map))this.mapIds.set(map,++this.nextMapId);const key=color+':'+(map?this.mapIds.get(map):'')+':'+kind;if(this.matCache.has(key))return this.matCache.get(key);
   let m;
-  if(kind==='ink'){m=new B.StandardMaterial('spray-paint',this.scene);m.diffuseColor=B.Color3.FromHexString(color);m.specularColor=B.Color3.Black();m.diffuseTexture=this.texture(map);m.useAlphaFromDiffuseTexture=true;m.diffuseTexture.hasAlpha=true;m.transparencyMode=B.StandardMaterial.MATERIAL_ALPHABLEND;m.disableDepthWrite=true;m.zOffset=-1;m.alpha=.67;}
+  if(kind==='interior-glass'){m=new B.StandardMaterial('apartment-glass',this.scene);m.diffuseColor=B.Color3.FromHexString(color);m.alpha=.1;m.specularColor=new B.Color3(.5,.6,.6);m.specularPower=96;m.disableDepthWrite=true;m.transparencyMode=B.StandardMaterial.MATERIAL_ALPHABLEND;}
+  else if(kind==='ink'){m=new B.StandardMaterial('spray-paint',this.scene);m.diffuseColor=B.Color3.FromHexString(color);m.specularColor=B.Color3.Black();m.diffuseTexture=this.texture(map);m.useAlphaFromDiffuseTexture=true;m.diffuseTexture.hasAlpha=true;m.transparencyMode=B.StandardMaterial.MATERIAL_ALPHABLEND;m.disableDepthWrite=true;m.zOffset=-1;m.alpha=.67;}
   else {m=new B.PBRMaterial(kind,this.scene);m.albedoColor=B.Color3.FromHexString(color);m.metallic=({steel:.78,iron:.65,brass:.8,glass:.1})[kind]??0;m.roughness=({steel:.63,iron:.49,brass:.38,glass:.12,wood:.62,fabric:.95,asphalt:.98,granite:.9})[kind]??.86;m.reflectionTexture=this.environment;m.environmentIntensity=kind==='glass'?.8:.32;m.directIntensity=1;m.enableSpecularAntiAliasing=true;if(map)m.albedoTexture=this.texture(map);if(kind==='stone'||kind==='asphalt'||kind==='granite'){m.bumpTexture=this.texture(this.maps.normal.image);m.bumpTexture.level=kind==='asphalt'?.09:kind==='granite'?.23:.18;}if(kind==='glass'){m.albedoColor=B.Color3.FromHexString(color);m.clearCoat.isEnabled=true;m.clearCoat.intensity=1;m.clearCoat.roughness=.09;}if(kind==='fabric'){m.sheen.isEnabled=true;m.sheen.intensity=.18;}}
+  if(kind.startsWith('interior-')&&kind!=='interior-glass'){m.emissiveColor=B.Color3.FromHexString(color).scale(kind==='interior-glow'?1.3:.22);m.roughness=.72;}
   if(kind.startsWith('road-')){
    m.metadata={street:true};m.environmentIntensity=kind==='road-wet'?.6:.18;
    m.roughness=kind==='road-wet'?.32:kind==='road-iron'?.66:kind==='road-granite'?.91:.94;
@@ -266,7 +271,7 @@ export class StreetScene {
   this.staticMeshes=[];for(const parts of groups.values()){const cast=parts[0].metadata.cast,mesh=parts.length>1?B.Mesh.MergeMeshes(parts,true,true,undefined,false,false):parts[0];if(!mesh)continue;mesh.receiveShadows=true;mesh.isPickable=false;mesh.freezeWorldMatrix();this.staticMeshes.push(mesh);if(cast)this.shadows.addShadowCaster(mesh);}
   this.canvas.dataset.meshes=String(this.scene.meshes.length);this.canvas.dataset.triangles=String(this.scene.meshes.reduce((total,mesh)=>total+mesh.getTotalIndices(),0)/3);
  }
- build(){buildNeighbors(this);this.masonry();this.windows();this.door();this.storefront();this.shutter();this.awning();this.ground();this.records.sort((a,b)=>a.z-b.z);this.consolidate();this.lightStreet();this.updateBlades();}
+ build(){buildNeighbors(this);if(this.place?.model==='groundfloor-apartment')buildApartment(this);else{this.masonry();this.windows();this.door();this.storefront();this.shutter();this.awning();}this.ground();this.records.sort((a,b)=>a.z-b.z);this.consolidate();this.lightStreet();this.updateBlades();}
  lightStreet(){
   if(!this.engine)return;
   const meshes=this.staticMeshes.filter(mesh=>mesh.material?.metadata?.street);
@@ -277,7 +282,7 @@ export class StreetScene {
  setProgress(progress){this.progress=clamp(progress,0,1);this.canvas.dataset.shutterPosition=this.progress.toFixed(4);this.updateBlades();this.render();}
  observeLayout(){this.observer.observe(this.canvas);if(this.frameElement!==this.canvas)this.observer.observe(this.frameElement);}
  resize(){
-  const rect=this.canvas.getBoundingClientRect(),frame=this.frameElement===this.canvas?rect:this.frameElement.getBoundingClientRect();
+  const bounds=this.canvas.getBoundingClientRect(),rect={width:this.canvas.clientWidth||bounds.width,height:this.canvas.clientHeight||bounds.height},frame=this.frameElement===this.canvas?rect:this.frameElement.getBoundingClientRect();
   if(!rect.width||!rect.height||!frame.height)return;
   this.width=rect.width;this.height=rect.height;this.frameHeight=frame.height;
   const viewWidth=H*rect.width/frame.height;this.viewWidth=viewWidth;
@@ -298,7 +303,32 @@ export class StreetScene {
   }else{const d=Math.max(2,devicePixelRatio||1);this.canvas.width=Math.round(rect.width*d);this.canvas.height=Math.round(rect.height*d);}
   this.render();
  }
- tick(dt,now){if(this.disposed||!this.cat)return;const changed=this.cat.advance(dt);if(changed||(this.cat.state.visible&&now-(this.lastCatDraw||0)>33)){this.cat.apply();this.lastCatDraw=now;this.renderCat();}}
+ tick(dt,now,audio={}){
+  if(this.disposed||!this.cat)return;
+  const changed=this.cat.advance(dt),due=now-(this.lastCatDraw||0)>33;
+  this.djElapsed=(this.djElapsed||0)+(audio.playing?dt:0);
+  const djChanged=due&&this.dj?.advance(this.djElapsed,!!audio.playing,audio.bands,this.cat.reduced.matches);
+  if(due)this.djElapsed=0;if(djChanged)this.canvas.dataset.djTime=this.dj.time.toFixed(3);
+  if(changed||(this.cat.state.visible&&due)||djChanged){this.cat.apply();this.lastCatDraw=now;this.renderCat();}
+ }
+ setCatJourneyPose(pose){if(this.disposed)return;this.cat.state=pose;this.cat.apply();this.renderCat();}
+ catFocusPoint(){
+  const s=this.cat.state;if(!this.engine){const k=this.frameHeight/H;return {x:(this.width-W*k)/2+s.x*k,y:(s.y-40)*k};}
+  const p=this.api.Vector3.TransformCoordinates(this.vec(s.x,s.y-40,s.z+10),this.scene.getTransformMatrix());
+  return {x:(p.x+1)*this.width/2,y:(1-p.y)*this.height/2};
+ }
+ settleCat(x=95,z=80){
+  const cat=this.cat,width=this.viewWidth||1500;cat.timeline.begin({left:620-width/2-130,right:620+width/2+130},{rest:'sit',jump:false});
+  const v=cat.timeline.visit;v.startAt=cat.timeline.time;v.start=v.approach=v.stop=x;v.z=z;v.direction=v.exitDirection=1;v.incoming=0;v.outgoing=Math.abs(v.end-x)/100;
+  v.end=620+width/2+130;v.outgoing=Math.abs(v.end-x)/100;
+  v.phases=[{kind:'settle',at:0,duration:.95},{kind:'sit',at:.95,duration:9},{kind:'stand',at:9.95,duration:.85},{kind:'leave',at:10.8,duration:v.outgoing,from:x,to:v.end,direction:1}];v.duration=10.8+v.outgoing;
+  cat.state=cat.timeline.sample();cat.apply();this.renderCat();
+ }
+ projectBounds(x0,x1,y0,y1,z0,z1){
+  const matrix=this.scene.getTransformMatrix(),w=this.canvas.width,h=this.canvas.height;let left=w,bottom=h,right=0,top=0;
+  for(const x of [x0,x1])for(const y of [y0,y1])for(const z of [z0,z1]){const p=this.api.Vector3.TransformCoordinates(this.vec(x,y,z),matrix),px=(p.x+1)*w/2,py=(p.y+1)*h/2;left=Math.min(left,px);right=Math.max(right,px);bottom=Math.min(bottom,py);top=Math.max(top,py);}
+  return {left:Math.max(0,Math.floor(left)-4),bottom:Math.max(0,Math.floor(bottom)-4),right:Math.min(w,Math.ceil(right)+4),top:Math.min(h,Math.ceil(top)+4)};
+ }
  catBounds(){
   const s=this.cat?.state;if(!s?.visible)return null;
   // Include the entire visitor, tail, airborne poses and contact shadow. Project
@@ -314,8 +344,9 @@ export class StreetScene {
  renderCat(){
   if(!this.engine||!this.canvas.dataset.ready){this.render();return;}
   const next=this.catBounds(),previous=this.lastCatBounds;this.lastCatBounds=next;
-  if(!next&&!previous)return;
-  const a=previous||next,b=next||previous,left=Math.min(a.left,b.left),bottom=Math.min(a.bottom,b.bottom),right=Math.max(a.right,b.right),top=Math.max(a.top,b.top);
+  if(!next&&!previous&&!this.dj)return;
+  const regions=[previous,next,this.dj?this.projectBounds(240,1005,680,1168,-540,45):null].filter(Boolean);if(!regions.length)return;
+  const left=Math.min(...regions.map(r=>r.left)),bottom=Math.min(...regions.map(r=>r.bottom)),right=Math.max(...regions.map(r=>r.right)),top=Math.max(...regions.map(r=>r.top));
   if(right<=left||top<=bottom)return;
   // The preserved framebuffer already holds the static street. Clear and
   // redraw only the union of the old and new visitor bounds, including depth.
@@ -323,15 +354,16 @@ export class StreetScene {
   try{this.scene.render();}finally{this.engine.disableScissor();}
  }
  render(){if(this.disposed||!this.width)return;if(this.engine){this.scene.render();this.lastCatBounds=this.catBounds();}else this.drawCanvas();}
- switchToCanvas(){if(this.disposed||!this.engine)return;const old=this.canvas,replacement=old.cloneNode(false);old.replaceWith(replacement);this.observer.disconnect();this.scene.dispose();this.engine.dispose();this.engine=null;this.cat?.toCanvas();if(this.frameElement===old)this.frameElement=replacement;this.canvas=replacement;this.ctx=replacement.getContext('2d',{alpha:true});replacement.dataset.renderer='canvas2d';replacement.dataset.shutterPosition=this.progress.toFixed(4);this.observeLayout();this.resize();}
+ switchToCanvas(){if(this.disposed||!this.engine)return;const old=this.canvas,replacement=old.cloneNode(false);old.replaceWith(replacement);this.observer.disconnect();this.scene.dispose();this.engine.dispose();this.engine=null;this.cat?.toCanvas();this.dj?.toCanvas();if(this.frameElement===old)this.frameElement=replacement;this.canvas=replacement;this.ctx=replacement.getContext('2d',{alpha:true});replacement.dataset.renderer='canvas2d';replacement.dataset.shutterPosition=this.progress.toFixed(4);this.observeLayout();this.resize();}
  drawCanvas(){const ctx=this.ctx;if(!ctx)return;const w=this.canvas.width,h=this.canvas.height,scale=h/H*(this.frameHeight/this.height),ox=(w-W*scale)/2;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);ctx.setTransform(scale,0,0,scale,ox,0);for(const item of this.records){
   if(item.kind==='rect'){ctx.fillStyle=item.color;ctx.fillRect(item.x,item.y,item.w,item.h);if(item.map){ctx.globalAlpha=.15;ctx.drawImage(item.map,item.x,item.y,item.w,item.h);ctx.globalAlpha=1;}}
   else if(item.kind==='polygon'){ctx.fillStyle=item.color;ctx.beginPath();item.points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.fill();}
   else if(item.kind==='image')ctx.drawImage(item.image,item.x,item.y,item.w,item.h);
   else if(item.kind==='line'){ctx.strokeStyle=item.color;ctx.lineWidth=item.width;ctx.lineJoin='round';ctx.beginPath();item.points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();}
+  else if(item.kind==='dj')this.dj?.drawCanvas(ctx);
   else if(item.kind==='blades')for(let i=BLADES-1;i>=0;i--){const p=bladePlacement(i,this.progress);if(!p.visible)continue;const y=p.y-p.height/2;ctx.drawImage(this.maps.steel.image,OPEN.x,y,OPEN.width,p.height+.5);ctx.globalAlpha=.75;ctx.drawImage(this.paintCanvas,0,i*this.paintCanvas.height/BLADES,this.paintCanvas.width,this.paintCanvas.height/BLADES,OPEN.x,y,OPEN.width,p.height+.3);ctx.globalAlpha=1;ctx.fillStyle='#4d594f';ctx.fillRect(OPEN.x,y+p.height-.7,OPEN.width,.7);}
  }ctx.save();ctx.globalCompositeOperation='source-atop';ctx.fillStyle='rgba(245,116,24,.14)';ctx.fillRect(-5000,0,12000,H);ctx.restore();this.cat?.drawCanvas(ctx);}
- dispose(){this.disposed=true;this.cat?.dispose();this.observer.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onLost);this.scene?.dispose();this.engine?.dispose();}
+ dispose({keepEngine=false}={}){this.disposed=true;this.cat?.dispose();this.dj?.dispose();this.observer.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onLost);this.scene?.dispose();if(!keepEngine)this.engine?.dispose();}
 }
 function graffitiTexture(){return texture(1536,960,(c,w,h)=>{
  c.clearRect(0,0,w,h);c.lineJoin='round';c.lineCap='round';
