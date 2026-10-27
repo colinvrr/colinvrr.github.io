@@ -1,6 +1,6 @@
 import { WorldDeck } from './video-score.mjs';
 import { MetalShutter } from './shutter.mjs?v=20';
-import { StreetScene } from './model-scene.mjs?v=29';
+import { StreetScene } from './model-scene.mjs?v=30';
 import { UniverseRenderer, universeNames } from './universes.mjs?v=26';
 import { createMediaControls } from './media-controls.mjs';
 import { MechanicalFeedback } from './mechanics.mjs?v=13';

@@ -1,7 +1,7 @@
 import * as B from './vendor/babylon.min.js';
 import { buildNeighbors } from './street-neighbors.mjs?v=18';
 import { FACADES, centeredBays } from './facade-layout.mjs';
-import { buildStreetGround, DOORSTEP } from './street-ground.mjs?v=29';
+import { buildStreetGround, DOORSTEP, createRoadMaps } from './street-ground.mjs?v=30';
 import { StreetCat } from './cat-visitor.mjs?v=22';
 
 // All architecture is real geometry. Coordinates are centimetre-like facade
@@ -26,9 +26,9 @@ function materialMaps(){
    data.data[i]=base+n+cloud;data.data[i+1]=base+2+n+cloud;data.data[i+2]=base-1+n+cloud;data.data[i+3]=255;
   }c.putImageData(data,0,0);
  });
- const pavement=asphalt(409,94,13),road=asphalt(908,92,48);
+ const pavement=asphalt(409,94,13),roadMaps=createRoadMaps(),road=roadMaps.road;
  const granite=texture(512,512,(c,w,h)=>{c.fillStyle='#c0c2ba';c.fillRect(0,0,w,h);const r=rng(628);for(let i=0;i<48000;i++){const bright=r()>.52;c.fillStyle=bright?`rgba(241,242,229,${.12+r()*.3})`:`rgba(50,57,53,${.08+r()*.3})`;const x=r()*w,y=r()*h;c.fillRect(x,y,.6+r()*2,.5+r()*1.5);}});
- return {stone,normal,wood,steel,fabric,pavement,road,granite};
+ return {stone,normal,wood,steel,fabric,pavement,road,granite,roadNormal:roadMaps.normal,roadPaint:roadMaps.paint,roadIron:roadMaps.iron};
 }
 function guide(y){if(y>=22)return y;if(y<=0)return 0;return y*y*(44-y)/(22*22);}
 export function bladePlacement(index,progress,count=BLADES){const t=clamp(progress,0,1),e=t*t*(3-2*t),pitch=OPEN.height/count,lift=(OPEN.height+32)*e,top=index*pitch-lift,bottom=top+pitch,a=guide(top),b=guide(bottom);return {y:OPEN.y+(a+b)/2,height:Math.max(0,b-a),pitch,visible:b-a>.08,fold:1-clamp((b-a)/pitch,0,1)};}
@@ -79,6 +79,17 @@ export class StreetScene {
   let m;
   if(kind==='ink'){m=new B.StandardMaterial('spray-paint',this.scene);m.diffuseColor=B.Color3.FromHexString(color);m.specularColor=B.Color3.Black();m.diffuseTexture=this.texture(map);m.useAlphaFromDiffuseTexture=true;m.diffuseTexture.hasAlpha=true;m.transparencyMode=B.StandardMaterial.MATERIAL_ALPHABLEND;m.disableDepthWrite=true;m.zOffset=-1;m.alpha=.67;}
   else {m=new B.PBRMaterial(kind,this.scene);m.albedoColor=B.Color3.FromHexString(color);m.metallic=({steel:.78,iron:.65,brass:.8,glass:.1})[kind]??0;m.roughness=({steel:.63,iron:.49,brass:.38,glass:.12,wood:.62,fabric:.95,asphalt:.98,granite:.9})[kind]??.86;m.reflectionTexture=this.environment;m.environmentIntensity=kind==='glass'?.8:.32;m.directIntensity=1;m.enableSpecularAntiAliasing=true;if(map)m.albedoTexture=this.texture(map);if(kind==='stone'||kind==='asphalt'||kind==='granite'){m.bumpTexture=this.texture(this.maps.normal.image);m.bumpTexture.level=kind==='asphalt'?.09:kind==='granite'?.23:.18;}if(kind==='glass'){m.albedoColor=B.Color3.FromHexString(color);m.clearCoat.isEnabled=true;m.clearCoat.intensity=1;m.clearCoat.roughness=.09;}if(kind==='fabric'){m.sheen.isEnabled=true;m.sheen.intensity=.18;}}
+  if(kind.startsWith('road-')){
+   m.metadata={street:true};m.environmentIntensity=kind==='road-wet'?.6:.18;
+   m.roughness=kind==='road-wet'?.32:kind==='road-iron'?.66:kind==='road-granite'?.91:.94;
+   if(kind==='road-iron')m.metallic=.65;
+   if(kind==='road-asphalt'||kind==='road-wet'){m.bumpTexture=this.texture(this.maps.roadNormal.image);m.bumpTexture.level=.2;}
+   if(kind==='road-granite'){m.bumpTexture=this.texture(this.maps.normal.image);m.bumpTexture.level=.23;}
+   if(kind==='road-paint'){m.useAlphaFromAlbedoTexture=true;m.transparencyMode=B.StandardMaterial.MATERIAL_ALPHABLEND;m.disableDepthWrite=true;m.zOffset=-1;}
+   // Dynamic textures clamp by default; ground UVs are world coordinates.
+   // Repeat both axes to preserve grain and avoid stretching an edge texel.
+   for(const tex of [m.albedoTexture,m.bumpTexture])if(tex)tex.wrapU=tex.wrapV=B.Texture.WRAP_ADDRESSMODE;
+  }
   m.backFaceCulling=false;this.matCache.set(key,m);return m;
  }
  add(mesh,color,map,kind='stone',cast=true){mesh.material=this.mat(color,map,kind);mesh.receiveShadows=true;mesh.isPickable=false;this.staticMeshes.push(mesh);mesh.metadata={cast};return mesh;}
@@ -255,7 +266,13 @@ export class StreetScene {
   this.staticMeshes=[];for(const parts of groups.values()){const cast=parts[0].metadata.cast,mesh=parts.length>1?B.Mesh.MergeMeshes(parts,true,true,undefined,false,false):parts[0];if(!mesh)continue;mesh.receiveShadows=true;mesh.isPickable=false;mesh.freezeWorldMatrix();this.staticMeshes.push(mesh);if(cast)this.shadows.addShadowCaster(mesh);}
   this.canvas.dataset.meshes=String(this.scene.meshes.length);this.canvas.dataset.triangles=String(this.scene.meshes.reduce((total,mesh)=>total+mesh.getTotalIndices(),0)/3);
  }
- build(){buildNeighbors(this);this.masonry();this.windows();this.door();this.storefront();this.shutter();this.awning();this.ground();this.records.sort((a,b)=>a.z-b.z);this.consolidate();this.updateBlades();}
+ build(){buildNeighbors(this);this.masonry();this.windows();this.door();this.storefront();this.shutter();this.awning();this.ground();this.records.sort((a,b)=>a.z-b.z);this.consolidate();this.lightStreet();this.updateBlades();}
+ lightStreet(){
+  if(!this.engine)return;
+  const meshes=this.staticMeshes.filter(mesh=>mesh.material?.metadata?.street);
+  this.streetLight=new B.HemisphericLight('street-open-sky',new B.Vector3(0,1,0),this.scene);
+  this.streetLight.intensity=1.05;this.streetLight.diffuse=new B.Color3(.65,.77,.9);this.streetLight.groundColor=new B.Color3(.18,.23,.31);this.streetLight.includedOnlyMeshes=meshes;
+ }
  updateBlades(){for(let i=0;i<this.blades.length;i++){const part=this.blades[i];if(!part)continue;const p=bladePlacement(i,this.progress);part.setEnabled(p.visible);part.position=this.vec(OPEN.x+OPEN.width/2,p.y,33-p.fold*14);part.scaling.y=p.height/p.pitch;part.rotation.x=-p.fold*.18;}}
  setProgress(progress){this.progress=clamp(progress,0,1);this.canvas.dataset.shutterPosition=this.progress.toFixed(4);this.updateBlades();this.render();}
  observeLayout(){this.observer.observe(this.canvas);if(this.frameElement!==this.canvas)this.observer.observe(this.frameElement);}
