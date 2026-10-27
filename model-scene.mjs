@@ -258,8 +258,31 @@ export class StreetScene {
  updateBlades(){for(let i=0;i<this.blades.length;i++){const part=this.blades[i];if(!part)continue;const p=bladePlacement(i,this.progress);part.setEnabled(p.visible);part.position=this.vec(OPEN.x+OPEN.width/2,p.y,33-p.fold*14);part.scaling.y=p.height/p.pitch;part.rotation.x=-p.fold*.18;}}
  setProgress(progress){this.progress=clamp(progress,0,1);this.canvas.dataset.shutterPosition=this.progress.toFixed(4);this.updateBlades();this.render();}
  resize(){const rect=this.canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;this.width=rect.width;this.height=rect.height;const viewWidth=H*rect.width/rect.height;this.viewWidth=viewWidth;Object.assign(this.window.style,{left:`${(viewWidth/2+OPEN.x-W/2)/viewWidth*100}%`,top:`${OPEN.y/H*100}%`,width:`${OPEN.width/viewWidth*100}%`,height:`${OPEN.height/H*100}%`});if(this.engine){this.camera.orthoLeft=viewWidth/2;this.camera.orthoRight=-viewWidth/2;this.camera.orthoTop=H/2;this.camera.orthoBottom=-H/2;this.engine.setHardwareScalingLevel(1/Math.max(2,devicePixelRatio||1));this.engine.resize();}else{const d=Math.max(2,devicePixelRatio||1);this.canvas.width=Math.round(rect.width*d);this.canvas.height=Math.round(rect.height*d);}this.render();}
- tick(dt,now){if(this.disposed||!this.cat)return;const changed=this.cat.advance(dt);if(changed||(this.cat.state.visible&&now-(this.lastCatDraw||0)>33)){this.cat.apply();this.lastCatDraw=now;this.render();}}
- render(){if(this.disposed||!this.width)return;if(this.engine)this.scene.render();else this.drawCanvas();}
+ tick(dt,now){if(this.disposed||!this.cat)return;const changed=this.cat.advance(dt);if(changed||(this.cat.state.visible&&now-(this.lastCatDraw||0)>33)){this.cat.apply();this.lastCatDraw=now;this.renderCat();}}
+ catBounds(){
+  const s=this.cat?.state;if(!s?.visible)return null;
+  // Include the entire visitor, tail, airborne poses and contact shadow. Project
+  // a conservative world box so perspective and wide/mobile crops stay exact.
+  const matrix=this.scene.getTransformMatrix(),w=this.canvas.width,h=this.canvas.height;
+  let left=w,bottom=h,right=0,top=0;
+  for(const x of [s.x-115,s.x+115])for(const y of [s.y-180,s.groundY+12])for(const z of [s.z-115,s.z+115]){
+   const p=B.Vector3.TransformCoordinates(this.vec(x,y,z),matrix),px=(p.x+1)*w/2,py=(p.y+1)*h/2;
+   left=Math.min(left,px);right=Math.max(right,px);bottom=Math.min(bottom,py);top=Math.max(top,py);
+  }
+  return {left:Math.max(0,Math.floor(left)-4),bottom:Math.max(0,Math.floor(bottom)-4),right:Math.min(w,Math.ceil(right)+4),top:Math.min(h,Math.ceil(top)+4)};
+ }
+ renderCat(){
+  if(!this.engine||!this.canvas.dataset.ready){this.render();return;}
+  const next=this.catBounds(),previous=this.lastCatBounds;this.lastCatBounds=next;
+  if(!next&&!previous)return;
+  const a=previous||next,b=next||previous,left=Math.min(a.left,b.left),bottom=Math.min(a.bottom,b.bottom),right=Math.max(a.right,b.right),top=Math.max(a.top,b.top);
+  if(right<=left||top<=bottom)return;
+  // The preserved framebuffer already holds the static street. Clear and
+  // redraw only the union of the old and new visitor bounds, including depth.
+  this.engine.enableScissor(left,bottom,right-left,top-bottom);
+  try{this.scene.render();}finally{this.engine.disableScissor();}
+ }
+ render(){if(this.disposed||!this.width)return;if(this.engine){this.scene.render();this.lastCatBounds=this.catBounds();}else this.drawCanvas();}
  switchToCanvas(){if(this.disposed||!this.engine)return;const old=this.canvas,replacement=old.cloneNode(false);old.replaceWith(replacement);this.observer.disconnect();this.scene.dispose();this.engine.dispose();this.engine=null;this.cat?.toCanvas();this.canvas=replacement;this.ctx=replacement.getContext('2d',{alpha:true});replacement.dataset.renderer='canvas2d';replacement.dataset.shutterPosition=this.progress.toFixed(4);this.observer.observe(replacement);this.resize();}
  drawCanvas(){const ctx=this.ctx;if(!ctx)return;const w=this.canvas.width,h=this.canvas.height,scale=h/H,ox=(w-W*scale)/2;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);ctx.setTransform(scale,0,0,scale,ox,0);for(const item of this.records){
   if(item.kind==='rect'){ctx.fillStyle=item.color;ctx.fillRect(item.x,item.y,item.w,item.h);if(item.map){ctx.globalAlpha=.15;ctx.drawImage(item.map,item.x,item.y,item.w,item.h);ctx.globalAlpha=1;}}

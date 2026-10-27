@@ -132,7 +132,12 @@ vec2 encode(float h){float v=floor(clamp((h+5.)/10.,0.,1.)*65535.+.5);return vec
 void main(){
   vec2 p=(gl_FragCoord.xy/${atlasSize}.-.5)*24.;
   int a=int(uWorlds.x),b=int(uWorlds.y);
-  float first=height(a,p,0),second=a==b?first:height(b,p,1);
+  // At a completed transition only the target (BA) is sampled. Avoid evaluating
+  // the retired surface across all 262144 texels of the atlas.
+  float first=0.,second;
+  if(a==b){first=height(a,p,0);second=first;}
+  else if(uWorlds.z>=1.)second=height(b,p,1);
+  else{first=height(a,p,0);second=height(b,p,1);}
   fragColor=vec4(encode(first),encode(second));
 }`;
 export const universeFragment=`#version 300 es
@@ -454,7 +459,8 @@ export class UniverseRenderer {
     }else this.flowKey=null;
     gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,this.signalTexture);
     gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,null);gl.activeTexture(gl.TEXTURE0);
-    if(from!==0||to!==0){
+    const needsAtlas=id=>id!==0&&id!==2;
+    if(needsAtlas(to)||(blend<1&&needsAtlas(from))){
       gl.bindFramebuffer(gl.FRAMEBUFFER,this.fieldBuffer);gl.viewport(0,0,atlasSize,atlasSize);
       gl.disable(gl.DEPTH_TEST);gl.useProgram(this.fieldProgram);
       const f=this.fieldLocations;

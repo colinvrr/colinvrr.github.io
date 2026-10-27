@@ -1,7 +1,7 @@
 import { WorldDeck } from './video-score.mjs';
 import { MetalShutter } from './shutter.mjs?v=20';
-import { StreetScene } from './model-scene.mjs?v=24';
-import { UniverseRenderer, universeNames } from './universes.mjs?v=23';
+import { StreetScene } from './model-scene.mjs?v=26';
+import { UniverseRenderer, universeNames } from './universes.mjs?v=26';
 import { createMediaControls } from './media-controls.mjs';
 import { MechanicalFeedback } from './mechanics.mjs?v=13';
 import { createTrackClock } from './track-clock.mjs?v=13';
@@ -36,6 +36,7 @@ const mediaControls=createMediaControls({
 const shutter = new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
 let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false,clockArmed=false;
 let preparedAudio=null,mixStarting=false;
+let graphicsDirty=true;
 function prepareMixAudio(src){
   const audio=document.getElementById?.('preloaded-mix')||new Audio();
   audio.crossOrigin='anonymous';audio.preload='auto';
@@ -49,6 +50,7 @@ const mixesReady = fetch('./mixes.json?v=25').then(response => {
 }).then(config => { track.src=config.src || null;track.title=config.title||'MIX';if(!track.file){track.duration=Number(config.duration)||0;trackClock.update(null,track.duration);if(track.src)prepareMixAudio(track.src);} })
 .catch(() => { /* Local file loading remains available without a configuration. */ });
 function syncControls() {
+  graphicsDirty=true;
   if(playing)hasStarted=true;
   mixButton.dataset.invite=String(!hasStarted);
   playButton.setAttribute('aria-pressed',String(playing));
@@ -632,7 +634,7 @@ function initializeGraphics() {
     if(previous?.flow){universeRenderer.flow.set(previous.flow);universeRenderer.flowKey=previous.flowKey;}
     graphicsSeed=universeRenderer.palettes.seed;
     canvas.dataset.renderer='raymarch';canvas.dataset.quality='full';graphicsNotice.hidden=true;checkOutput=true;
-    graphicsReady=true;lastDraw=0;return true;
+    graphicsReady=true;graphicsDirty=true;lastDraw=0;return true;
   }catch(error){console.error(error);return graphicsUnavailable();}
 }
 function replaceGraphicsCanvas() {
@@ -709,6 +711,7 @@ function drawGraphics() {
   }
   canvas.dataset.universe=universeNames[universeTo];
   canvas.dataset.transition=universeBlend.toFixed(3);
+  graphicsDirty=false;
 }
 function frame(now) {
   animationRequest=0;queueFrame();
@@ -717,6 +720,7 @@ function frame(now) {
   const dt=Math.min((now-last)/1000,.06);last=now;
   scene.tick?.(dt,now);
   if(!visualPaused) {
+    graphicsDirty=true;
     analyse(dt);
     visualTime+=dt*(.45+bass*.55+mid*.7+high*.35)*(reducedMotion.matches?.2:1);
     shapePhase+=dt*(.055+mid*.24+high*.09+transients[1]*.2)*(reducedMotion.matches?.2:1);
@@ -726,6 +730,7 @@ function frame(now) {
   if(!graphicsReady)return;
   if(gl?.isContextLost()){scheduleGraphicsRecovery();return;}
   if(!shutterOpen&&now>shutterUntil)return;
+  if(visualPaused&&!graphicsDirty)return;
   if(now-lastDraw<(visualPaused?200:reducedMotion.matches?66:16))return;
   lastDraw=now;
   try{drawGraphics();}
@@ -733,10 +738,15 @@ function frame(now) {
 }
 function wakeGraphics() {
   if(disposed)return;
+  graphicsDirty=true;
   if(animationRequest)cancelAnimationFrame(animationRequest);
   animationRequest=0;last=performance.now();queueFrame();
 }
 if(gl)bindGraphicsContext(canvas);
+function invalidateGraphics(){graphicsDirty=true;queueFrame();}
+const graphicsObserver=typeof ResizeObserver==='undefined'?null:new ResizeObserver(invalidateGraphics);
+graphicsObserver?.observe(visualWindow);
+window.addEventListener('resize',invalidateGraphics);
 queueFrame();
 function prepareGraphics(){
   if(disposed)return;
@@ -764,6 +774,6 @@ document.addEventListener('visibilitychange',()=>{
 window.addEventListener('pageshow',wakeGraphics);
 window.addEventListener('pagehide',event=>{
   if(event.persisted)return;
-  disposed=true;cancelAnimationFrame(animationRequest);clearTimeout(graphicsRestoreTimer);
+  disposed=true;cancelAnimationFrame(animationRequest);clearTimeout(graphicsRestoreTimer);graphicsObserver?.disconnect();
   ++inputGeneration;releaseSource();shutter.dispose();scene.dispose();feedback.dispose();mediaControls.dispose();context?.close();
 });
