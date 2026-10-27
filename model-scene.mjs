@@ -1,7 +1,7 @@
 import * as B from './vendor/babylon.min.js';
 import { buildNeighbors } from './street-neighbors.mjs?v=18';
 import { FACADES, centeredBays } from './facade-layout.mjs';
-import { buildStreetGround, DOORSTEP } from './street-ground.mjs?v=19';
+import { buildStreetGround, DOORSTEP } from './street-ground.mjs?v=29';
 import { StreetCat } from './cat-visitor.mjs?v=22';
 
 // All architecture is real geometry. Coordinates are centimetre-like facade
@@ -26,7 +26,7 @@ function materialMaps(){
    data.data[i]=base+n+cloud;data.data[i+1]=base+2+n+cloud;data.data[i+2]=base-1+n+cloud;data.data[i+3]=255;
   }c.putImageData(data,0,0);
  });
- const pavement=asphalt(409,94,13),road=asphalt(908,75,22);
+ const pavement=asphalt(409,94,13),road=asphalt(908,92,48);
  const granite=texture(512,512,(c,w,h)=>{c.fillStyle='#c0c2ba';c.fillRect(0,0,w,h);const r=rng(628);for(let i=0;i<48000;i++){const bright=r()>.52;c.fillStyle=bright?`rgba(241,242,229,${.12+r()*.3})`:`rgba(50,57,53,${.08+r()*.3})`;const x=r()*w,y=r()*h;c.fillRect(x,y,.6+r()*2,.5+r()*1.5);}});
  return {stone,normal,wood,steel,fabric,pavement,road,granite};
 }
@@ -46,7 +46,8 @@ function dressedBox(w,h,d,b){
 }
 
 export class StreetScene {
- constructor(canvas,windowElement,place){
+ constructor(canvas,windowElement,place,{frameElement=canvas}={}){
+  this.frameElement=frameElement;
   this.api=B;this.canvas=canvas;this.window=windowElement;this.place=place;this.progress=0;this.records=[];this.blades=[];this.staticMeshes=[];this.textureCache=new Map();this.matCache=new Map();this.mapIds=new WeakMap();this.nextMapId=0;this.disposed=false;this.maps=materialMaps();this.paintCanvas=graffitiTexture().image;
   try{
    this.engine=new B.Engine(canvas,true,{alpha:true,preserveDrawingBuffer:true,stencil:false});
@@ -60,10 +61,10 @@ export class StreetScene {
   }catch(error){this.scene?.dispose();this.engine?.dispose();this.engine=null;this.setupCanvas();}
   this.canvas.dataset.renderer=this.engine?'modeled-pbr':'canvas2d';this.canvas.dataset.lighting='winter-golden-hour';this.build();this.cat=new StreetCat(this);
   this.onLost=event=>{event.preventDefault();this.switchToCanvas();};this.canvas.addEventListener('webglcontextlost',this.onLost);
-  this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(this.canvas);this.resize();
+  this.observer=new ResizeObserver(()=>this.resize());this.observeLayout();this.resize();
   this.ready=new Promise(resolve=>{const finish=()=>{if(!this.disposed){this.render();if(this.engine)this.shadows.getShadowMap().refreshRate=0;this.canvas.dataset.ready='true';}resolve();};if(this.engine)this.scene.executeWhenReady(finish);else finish();});
  }
- setupCanvas(){let ctx=this.canvas.getContext('2d',{alpha:true});if(!ctx){const replacement=this.canvas.cloneNode(false);this.canvas.replaceWith(replacement);this.canvas=replacement;ctx=replacement.getContext('2d',{alpha:true});}this.ctx=ctx;}
+ setupCanvas(){let ctx=this.canvas.getContext('2d',{alpha:true});if(!ctx){const replacement=this.canvas.cloneNode(false);this.canvas.replaceWith(replacement);if(this.frameElement===this.canvas)this.frameElement=replacement;this.canvas=replacement;ctx=replacement.getContext('2d',{alpha:true});}this.ctx=ctx;}
  vec(x,y,z){return new B.Vector3(x-W/2,H/2-y,z);}
  createEnvironment(){
   // Small generated sky/street cubemap: local, no HDR download or backdrop image.
@@ -257,7 +258,29 @@ export class StreetScene {
  build(){buildNeighbors(this);this.masonry();this.windows();this.door();this.storefront();this.shutter();this.awning();this.ground();this.records.sort((a,b)=>a.z-b.z);this.consolidate();this.updateBlades();}
  updateBlades(){for(let i=0;i<this.blades.length;i++){const part=this.blades[i];if(!part)continue;const p=bladePlacement(i,this.progress);part.setEnabled(p.visible);part.position=this.vec(OPEN.x+OPEN.width/2,p.y,33-p.fold*14);part.scaling.y=p.height/p.pitch;part.rotation.x=-p.fold*.18;}}
  setProgress(progress){this.progress=clamp(progress,0,1);this.canvas.dataset.shutterPosition=this.progress.toFixed(4);this.updateBlades();this.render();}
- resize(){const rect=this.canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;this.width=rect.width;this.height=rect.height;const viewWidth=H*rect.width/rect.height;this.viewWidth=viewWidth;Object.assign(this.window.style,{left:`${(viewWidth/2+OPEN.x-W/2)/viewWidth*100}%`,top:`${OPEN.y/H*100}%`,width:`${OPEN.width/viewWidth*100}%`,height:`${OPEN.height/H*100}%`});if(this.engine){this.camera.orthoLeft=viewWidth/2;this.camera.orthoRight=-viewWidth/2;this.camera.orthoTop=H/2;this.camera.orthoBottom=-H/2;this.engine.setHardwareScalingLevel(1/Math.max(2,devicePixelRatio||1));this.engine.resize();}else{const d=Math.max(2,devicePixelRatio||1);this.canvas.width=Math.round(rect.width*d);this.canvas.height=Math.round(rect.height*d);}this.render();}
+ observeLayout(){this.observer.observe(this.canvas);if(this.frameElement!==this.canvas)this.observer.observe(this.frameElement);}
+ resize(){
+  const rect=this.canvas.getBoundingClientRect(),frame=this.frameElement===this.canvas?rect:this.frameElement.getBoundingClientRect();
+  if(!rect.width||!rect.height||!frame.height)return;
+  this.width=rect.width;this.height=rect.height;this.frameHeight=frame.height;
+  const viewWidth=H*rect.width/frame.height;this.viewWidth=viewWidth;
+  Object.assign(this.window.style,{left:`${(viewWidth/2+OPEN.x-W/2)/viewWidth*100}%`,top:`${OPEN.y/H*100}%`,width:`${OPEN.width/viewWidth*100}%`,height:`${OPEN.height/H*100}%`});
+  if(this.engine){
+   this.camera.orthoLeft=viewWidth/2;this.camera.orthoRight=-viewWidth/2;this.camera.orthoTop=H/2;this.camera.orthoBottom=-H/2;
+   this.engine.setHardwareScalingLevel(1/Math.max(2,devicePixelRatio||1));this.engine.resize();
+   // Extend the view downwards without moving the eye or changing the street's
+   // framing. An off-centre projection keeps every facade and the aperture in
+   // the same screen position while revealing the foreground below them.
+   this.camera.unfreezeProjectionMatrix();
+   this.camera.fov=2*Math.atan(Math.tan(.43/2)*rect.height/frame.height);
+   if(this.frameElement!==this.canvas){
+    const projection=this.camera.getProjectionMatrix(true).clone();
+    projection.addAtIndex(9,frame.height/rect.height-1);
+    this.camera.freezeProjectionMatrix(projection);
+   }
+  }else{const d=Math.max(2,devicePixelRatio||1);this.canvas.width=Math.round(rect.width*d);this.canvas.height=Math.round(rect.height*d);}
+  this.render();
+ }
  tick(dt,now){if(this.disposed||!this.cat)return;const changed=this.cat.advance(dt);if(changed||(this.cat.state.visible&&now-(this.lastCatDraw||0)>33)){this.cat.apply();this.lastCatDraw=now;this.renderCat();}}
  catBounds(){
   const s=this.cat?.state;if(!s?.visible)return null;
@@ -283,8 +306,8 @@ export class StreetScene {
   try{this.scene.render();}finally{this.engine.disableScissor();}
  }
  render(){if(this.disposed||!this.width)return;if(this.engine){this.scene.render();this.lastCatBounds=this.catBounds();}else this.drawCanvas();}
- switchToCanvas(){if(this.disposed||!this.engine)return;const old=this.canvas,replacement=old.cloneNode(false);old.replaceWith(replacement);this.observer.disconnect();this.scene.dispose();this.engine.dispose();this.engine=null;this.cat?.toCanvas();this.canvas=replacement;this.ctx=replacement.getContext('2d',{alpha:true});replacement.dataset.renderer='canvas2d';replacement.dataset.shutterPosition=this.progress.toFixed(4);this.observer.observe(replacement);this.resize();}
- drawCanvas(){const ctx=this.ctx;if(!ctx)return;const w=this.canvas.width,h=this.canvas.height,scale=h/H,ox=(w-W*scale)/2;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);ctx.setTransform(scale,0,0,scale,ox,0);for(const item of this.records){
+ switchToCanvas(){if(this.disposed||!this.engine)return;const old=this.canvas,replacement=old.cloneNode(false);old.replaceWith(replacement);this.observer.disconnect();this.scene.dispose();this.engine.dispose();this.engine=null;this.cat?.toCanvas();if(this.frameElement===old)this.frameElement=replacement;this.canvas=replacement;this.ctx=replacement.getContext('2d',{alpha:true});replacement.dataset.renderer='canvas2d';replacement.dataset.shutterPosition=this.progress.toFixed(4);this.observeLayout();this.resize();}
+ drawCanvas(){const ctx=this.ctx;if(!ctx)return;const w=this.canvas.width,h=this.canvas.height,scale=h/H*(this.frameHeight/this.height),ox=(w-W*scale)/2;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);ctx.setTransform(scale,0,0,scale,ox,0);for(const item of this.records){
   if(item.kind==='rect'){ctx.fillStyle=item.color;ctx.fillRect(item.x,item.y,item.w,item.h);if(item.map){ctx.globalAlpha=.15;ctx.drawImage(item.map,item.x,item.y,item.w,item.h);ctx.globalAlpha=1;}}
   else if(item.kind==='polygon'){ctx.fillStyle=item.color;ctx.beginPath();item.points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.fill();}
   else if(item.kind==='image')ctx.drawImage(item.image,item.x,item.y,item.w,item.h);

@@ -28,7 +28,7 @@ function graniteBlock(scene,x,width){
 export function buildStreetGround(scene){
  const x=-2500,width=6200,kerbFront=STREET.kerbZ+STREET.kerbWidth;
  surface(scene,'asphalt-pavement',x,width,STREET.wallZ,STREET.kerbZ,pavementY,'#d1d0c7',scene.maps.pavement.image,'asphalt');
- surface(scene,'lower-roadway',x,width,kerbFront,1500,roadY,'#b3b6b2',scene.maps.road.image,'asphalt');
+ surface(scene,'lower-roadway',x,width,kerbFront,2700,roadY,'#b3b6b2',scene.maps.road.image,'asphalt');
  // Individually jointed grey granite kerbs, with a softly worn upper arris.
  for(let xx=x;xx<x+width;xx+=177)graniteBlock(scene,xx,175.8);
  // Narrow gutter follows the foot of the kerb, flush with the lower roadway.
@@ -41,6 +41,18 @@ export function buildStreetGround(scene){
   const zz=z-21+i*6;
   scene.tube([[cx+7,top-.7,zz],[cx+55,top-.7,zz]],'#6d746b',.35,'iron');
  }
+ // Faded parking-bay corners lie flush with the asphalt. They lead the eye
+ // towards the garage and add a scale cue to the newly visible foreground.
+ const paintY=z=>roadY(z)-.24;
+ for(const side of [350,880]){
+  surface(scene,'worn-parking-line',side,9,1250,1740,paintY,'#bbb69d',scene.maps.granite.image,'asphalt');
+  surface(scene,'parking-corner',side===350?350:769,120,1242,1251,paintY,'#bbb69d',scene.maps.granite.image,'asphalt');
+ }
+ // A small cast-iron service cover with a recessed frame and transverse ribs.
+ const coverX=530,coverZ=2040,coverY=roadY(coverZ)-.6;
+ scene.box(coverX,coverY,94,1.2,104,coverZ,'#343b38',null,'iron',.5);
+ scene.box(coverX+5,coverY-.12,84,.7,94,coverZ,'#4b514a',null,'iron',.3);
+ for(let i=0;i<11;i++)scene.box(coverX+10,coverY-.65,74,.5,2,coverZ-39+i*7.8,'#60665a',null,'iron',.2);
  // The shop threshold is seated in the pavement and barely raised above it.
  scene.box(239,1162,764,6,49,7,'#aaa79a',scene.maps.granite.image,'granite',.8);
 }

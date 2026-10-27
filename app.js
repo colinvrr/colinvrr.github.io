@@ -1,6 +1,6 @@
 import { WorldDeck } from './video-score.mjs';
 import { MetalShutter } from './shutter.mjs?v=20';
-import { StreetScene } from './model-scene.mjs?v=26';
+import { StreetScene } from './model-scene.mjs?v=29';
 import { UniverseRenderer, universeNames } from './universes.mjs?v=26';
 import { createMediaControls } from './media-controls.mjs';
 import { MechanicalFeedback } from './mechanics.mjs?v=13';
@@ -12,7 +12,7 @@ const surface = document.querySelector('#surface');
 const visualWindow = document.querySelector('#visual-window');
 const graphicsNotice=document.querySelector('#graphics-notice');
 const place = applyPlace(surface);
-const scene = new StreetScene(document.querySelector('#model-canvas'),visualWindow,place);
+const scene = new StreetScene(document.querySelector('#model-canvas'),visualWindow,place,{frameElement:surface});
 surface.dataset.placeReady='true';
 const picker = document.querySelector('#file');
 const status = document.querySelector('#status');

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#858585">
+<meta name="theme-color" content="#3d3b35">
 <meta name="description" content="Une matière géométrique traversée par le son. Un mix, un levier, un volet roulant.">
 <title>colinvrr</title>
 <meta property="og:title" content="colinvrr">
@@ -13,10 +13,10 @@
 <meta property="og:url" content="https://colinvrr.github.io/">
 <link rel="icon" href="data:,">
 <link rel="modulepreload" href="./vendor/babylon.min.js">
-<link rel="modulepreload" href="./model-scene.mjs?v=26">
+<link rel="modulepreload" href="./model-scene.mjs?v=29">
 <link rel="modulepreload" href="./universes.mjs?v=26">
 <link rel="preload" href="./mixes.json?v=25" as="fetch" crossorigin>
-<link rel="stylesheet" href="./style.css?v=28">
+<link rel="stylesheet" href="./style.css?v=29">
 </head>
 <body>
 <audio id="preloaded-mix" src="./audio/sofasurfs-minimix.mp3" preload="auto" crossorigin="anonymous" hidden></audio>
@@ -25,9 +25,9 @@
 <section class="machine" aria-label="Lecteur audiovisuel colinvrr">
 <button id="surface" type="button" aria-label="Façade parisienne, lire ou mettre en pause le mix" aria-describedby="instructions">
 <span id="visual-window" class="visual-window" aria-hidden="true"><canvas id="canvas"></canvas><span id="graphics-notice" class="graphics-notice" hidden>Le rendu n’a pas pu démarrer. Ouvrez le site dans un navigateur récent avec l’accélération graphique activée.</span></span>
-<canvas id="model-canvas" class="model-canvas" aria-hidden="true"></canvas>
 <span id="startup" class="startup" aria-hidden="true"><span class="startup-light"></span></span>
 </button>
+<canvas id="model-canvas" class="model-canvas" aria-hidden="true"></canvas>
 <div class="controls" role="group" aria-label="Commandes de lecture">
 <div class="transport-wrap"><div class="transport">
 <button class="push-button" id="stop" type="button" aria-label="Arrêt et fermeture du volet"><span class="button-face"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5h10v10H5z"/></svg></span></button>
@@ -53,6 +53,6 @@
 <p id="instructions" class="sr-only">Actionnez le levier MIX pour écouter le morceau et ouvrir le volet. Pause fige le son et l’image. Le bouton carré arrête la lecture, remet le mix au début et referme le volet. Désactiver le levier met le mix en pause et referme le volet. Cliquer sur le carré lance ou met en pause la lecture. Vous pouvez déposer un autre fichier audio sur le carré pour l’écouter localement. Espace : lecture ou pause. M : microphone. S : son d’un onglet. F : plein écran. Échap : arrêter et fermer le volet.</p>
 <p id="status" class="sr-only" role="status" aria-live="polite">Volet fermé. MIX à l’arrêt.</p>
 </main>
-<script type="module" src="./app.js?v=26"></script>
+<script type="module" src="./app.js?v=29"></script>
 </body>
 </html>
