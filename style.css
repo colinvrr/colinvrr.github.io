@@ -73,8 +73,8 @@ canvas { display: block; }
 @media (pointer: coarse), (max-width: 900px) { .push-button { min-height: 44px; } }
 @media (max-height: 550px) and (min-width: 601px) { #surface { height: 70svh; } .controls { gap: 18px; } }
 @media (max-width: 600px), (max-height: 550px) and (pointer: coarse) {
-  /* Enlarge the central garage while keeping its whole opening in view. */
-  #surface { height: min(calc(100svh - 140px - env(safe-area-inset-bottom, 0px)), calc((100vw - 24px) * 1.65)); }
+  /* Keep the garage central with visible neighbouring facades on phones. */
+  #surface { height: min(calc(100svh - 140px - env(safe-area-inset-bottom, 0px)), 84vw); }
   .controls { min-height: calc(140px + env(safe-area-inset-bottom, 0px)); flex-direction: row; justify-content: center; gap: 12px; padding: 12px 8px calc(16px + env(safe-area-inset-bottom, 0px)); }
 }
 @media (max-width: 380px) {
