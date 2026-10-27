@@ -35,23 +35,15 @@ const mediaControls=createMediaControls({
 });
 const shutter = new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
 let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false,clockArmed=false;
-let preparedAudio=null,preparedAudioReady=Promise.resolve(),mixStarting=false;
+let preparedAudio=null,mixStarting=false;
 function prepareMixAudio(src){
   const audio=document.getElementById?.('preloaded-mix')||new Audio();
   audio.crossOrigin='anonymous';audio.preload='auto';
   if(audio.getAttribute?.('src')!==src)audio.src=src;
   preparedAudio=audio;
-  preparedAudioReady=new Promise(resolve=>{
-    let timer;
-    const finish=()=>{clearTimeout(timer);resolve();};
-    audio.addEventListener('canplay',finish,{once:true});
-    audio.addEventListener('error',finish,{once:true});
-    // A slow or offline audio connection must not lock the interface indefinitely.
-    timer=setTimeout(finish,10000);
-    if(audio.networkState!==2)audio.load();if(audio.readyState>=3)finish();
-  });
+  if(audio.networkState!==2)audio.load();
 }
-const mixesReady = fetch('./mixes.json?v=20').then(response => {
+const mixesReady = fetch('./mixes.json?v=25').then(response => {
   if(!response.ok)throw new Error('Mix configuration unavailable');
   return response.json();
 }).then(config => { track.src=config.src || null;track.title=config.title||'MIX';if(!track.file){track.duration=Number(config.duration)||0;trackClock.update(null,track.duration);if(track.src)prepareMixAudio(track.src);} })
@@ -745,20 +737,22 @@ function wakeGraphics() {
   animationRequest=0;last=performance.now();queueFrame();
 }
 if(gl)bindGraphicsContext(canvas);
-initializeGraphics();queueFrame();
-// Compile and draw behind the closed shutter before exposing the controls.
-if(document.documentElement){
-  document.querySelector('main').inert=true;
-  if(graphicsReady){try{drawGraphics();gl.finish();}catch(error){console.error(error);}}
-  Promise.all([scene.ready,mixesReady.then(()=>preparedAudioReady)]).then(()=>{
-    if(disposed)return;
-    requestAnimationFrame(()=>{
-      document.documentElement.dataset.loading='false';
-      document.querySelector('main').inert=false;
-      document.querySelector('#startup').hidden=true;
-    });
-  });
+queueFrame();
+function prepareGraphics(){
+  if(disposed)return;
+  initializeGraphics();
+  if(graphicsReady){try{drawGraphics();}catch(error){console.error(error);}}
 }
+if(document.documentElement){
+  // Reveal the street independently of audio buffering and video shader compilation.
+  Promise.resolve(scene.ready).then(()=>{
+    if(disposed)return;
+    document.documentElement.dataset.loading='false';
+    document.querySelector('#startup').hidden=true;
+    // Give the completed architecture a paint before preparing the video engine.
+    requestAnimationFrame(()=>setTimeout(prepareGraphics,0));
+  });
+}else prepareGraphics();
 document.addEventListener('visibilitychange',()=>{
   feedback.setVisible(!document.hidden);
   if(document.hidden){cancelAnimationFrame(animationRequest);animationRequest=0;}

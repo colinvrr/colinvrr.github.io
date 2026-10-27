@@ -15,18 +15,18 @@
 <link rel="modulepreload" href="./vendor/babylon.min.js">
 <link rel="modulepreload" href="./model-scene.mjs?v=24">
 <link rel="modulepreload" href="./universes.mjs?v=23">
-<link rel="preload" href="./mixes.json?v=20" as="fetch" crossorigin>
-<link rel="stylesheet" href="./style.css?v=24">
+<link rel="preload" href="./mixes.json?v=25" as="fetch" crossorigin>
+<link rel="stylesheet" href="./style.css?v=25">
 </head>
 <body>
-<audio id="preloaded-mix" src="./audio/mix2-261026.m4a" preload="auto" crossorigin="anonymous" hidden></audio>
-<div id="startup" class="startup" role="status" aria-live="polite"><span class="startup-light" aria-hidden="true"></span><span>Préparation du décor et du mix…</span></div>
+<audio id="preloaded-mix" src="./audio/sofasurfs-minimix.mp3" preload="auto" crossorigin="anonymous" hidden></audio>
 <noscript><style>main{visibility:visible!important}#startup{display:none}</style>Activez JavaScript pour lancer le lecteur.</noscript>
 <main>
 <section class="machine" aria-label="Lecteur audiovisuel colinvrr">
 <button id="surface" type="button" aria-label="Façade parisienne, lire ou mettre en pause le mix" aria-describedby="instructions">
 <span id="visual-window" class="visual-window" aria-hidden="true"><canvas id="canvas"></canvas><span id="graphics-notice" class="graphics-notice" hidden>Le rendu n’a pas pu démarrer. Ouvrez le site dans un navigateur récent avec l’accélération graphique activée.</span></span>
 <canvas id="model-canvas" class="model-canvas" aria-hidden="true"></canvas>
+<span id="startup" class="startup" aria-hidden="true"><span class="startup-light"></span></span>
 </button>
 <div class="controls" role="group" aria-label="Commandes de lecture">
 <div class="transport-wrap"><div class="transport">
@@ -53,6 +53,6 @@
 <p id="instructions" class="sr-only">Actionnez le levier MIX pour écouter le morceau et ouvrir le volet. Pause fige le son et l’image. Le bouton carré arrête la lecture, remet le mix au début et referme le volet. Désactiver le levier met le mix en pause et referme le volet. Cliquer sur le carré lance ou met en pause la lecture. Vous pouvez déposer un autre fichier audio sur le carré pour l’écouter localement. Espace : lecture ou pause. M : microphone. S : son d’un onglet. F : plein écran. Échap : arrêter et fermer le volet.</p>
 <p id="status" class="sr-only" role="status" aria-live="polite">Volet fermé. MIX à l’arrêt.</p>
 </main>
-<script type="module" src="./app.js?v=24"></script>
+<script type="module" src="./app.js?v=25"></script>
 </body>
 </html>
