@@ -61,7 +61,7 @@ export class StreetScene {
   this.canvas.dataset.renderer=this.engine?'modeled-pbr':'canvas2d';this.canvas.dataset.lighting='winter-golden-hour';this.build();this.cat=new StreetCat(this);
   this.onLost=event=>{event.preventDefault();this.switchToCanvas();};this.canvas.addEventListener('webglcontextlost',this.onLost);
   this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(this.canvas);this.resize();
-  if(this.engine)this.scene.executeWhenReady(()=>{if(!this.disposed){this.render();this.shadows.getShadowMap().refreshRate=0;this.canvas.dataset.ready='true';}});
+  this.ready=new Promise(resolve=>{const finish=()=>{if(!this.disposed){this.render();if(this.engine)this.shadows.getShadowMap().refreshRate=0;this.canvas.dataset.ready='true';}resolve();};if(this.engine)this.scene.executeWhenReady(finish);else finish();});
  }
  setupCanvas(){let ctx=this.canvas.getContext('2d',{alpha:true});if(!ctx){const replacement=this.canvas.cloneNode(false);this.canvas.replaceWith(replacement);this.canvas=replacement;ctx=replacement.getContext('2d',{alpha:true});}this.ctx=ctx;}
  vec(x,y,z){return new B.Vector3(x-W/2,H/2-y,z);}

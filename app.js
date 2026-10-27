@@ -1,6 +1,6 @@
 import { WorldDeck } from './video-score.mjs';
 import { MetalShutter } from './shutter.mjs?v=20';
-import { StreetScene } from './model-scene.mjs?v=23';
+import { StreetScene } from './model-scene.mjs?v=24';
 import { UniverseRenderer, universeNames } from './universes.mjs?v=23';
 import { createMediaControls } from './media-controls.mjs';
 import { MechanicalFeedback } from './mechanics.mjs?v=13';
@@ -30,22 +30,39 @@ feedback.setVisible(!document.hidden);
 const mediaControls=createMediaControls({
   getAudio:()=>mode==='file'?media:null,
   play:resumePlayback,
-  pause:()=>{++inputGeneration;if(mode!=='idle')pausePlayback();else{clockArmed=false;syncControls();}},
+  pause:()=>{++inputGeneration;if(mode!=='idle'||mixStarting)pausePlayback();else{clockArmed=false;syncControls();}},
   stop:stopPlayback
 });
 const shutter = new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
 let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false,clockArmed=false;
+let preparedAudio=null,preparedAudioReady=Promise.resolve(),mixStarting=false;
+function prepareMixAudio(src){
+  const audio=document.getElementById?.('preloaded-mix')||new Audio();
+  audio.crossOrigin='anonymous';audio.preload='auto';
+  if(audio.getAttribute?.('src')!==src)audio.src=src;
+  preparedAudio=audio;
+  preparedAudioReady=new Promise(resolve=>{
+    let timer;
+    const finish=()=>{clearTimeout(timer);resolve();};
+    audio.addEventListener('canplay',finish,{once:true});
+    audio.addEventListener('error',finish,{once:true});
+    // A slow or offline audio connection must not lock the interface indefinitely.
+    timer=setTimeout(finish,10000);
+    if(audio.networkState!==2)audio.load();if(audio.readyState>=3)finish();
+  });
+}
 const mixesReady = fetch('./mixes.json?v=20').then(response => {
   if(!response.ok)throw new Error('Mix configuration unavailable');
   return response.json();
-}).then(config => { track.src=config.src || null;track.title=config.title||'MIX';if(!track.file){track.duration=Number(config.duration)||0;trackClock.update(null,track.duration);} })
+}).then(config => { track.src=config.src || null;track.title=config.title||'MIX';if(!track.file){track.duration=Number(config.duration)||0;trackClock.update(null,track.duration);if(track.src)prepareMixAudio(track.src);} })
 .catch(() => { /* Local file loading remains available without a configuration. */ });
 function syncControls() {
   if(playing)hasStarted=true;
   mixButton.dataset.invite=String(!hasStarted);
   playButton.setAttribute('aria-pressed',String(playing));
   pauseButton.setAttribute('aria-pressed',String(!playing && mode!=='idle'));
-  const active=playing && mode==='file';
+  const active=(playing && mode==='file')||mixStarting;
+  mixButton.dataset.pending=String(mixStarting);
   mixButton.setAttribute('aria-checked',String(active));
   mixButton.setAttribute('aria-label',active ? 'Mettre le mix en pause et fermer le volet' : 'Lancer le mix');
   mixLed.dataset.on=String(active);
@@ -377,6 +394,7 @@ async function audioGraph() {
   if(!analyser){analyser=context.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=.2;spectrum=new Float32Array(analyser.frequencyBinCount);waveform=new Float32Array(analyser.fftSize);}
 }
 function releaseSource(close=true) {
+  mixStarting=false;
   if(close)clockArmed=false;
   const previousMedia=media;
   media=null;
@@ -394,6 +412,7 @@ function releaseSource(close=true) {
   syncControls();
 }
 function pausePlayback(close=false) {
+  mixStarting=false;
   if(close)clockArmed=false;
   playing=false;visualPaused=true;
   if(media)media.pause();
@@ -409,7 +428,7 @@ function stopPlayback() {
 }
 async function startMix() {
   const generation=++inputGeneration;
-  clockArmed=true;trackClock.setPower(true);
+  clockArmed=true;mixStarting=true;syncControls();trackClock.setPower(true);
   try {
     mediaControls.preparePlayback();
     await audioGraph();
@@ -420,15 +439,15 @@ async function startMix() {
       return;
     }
     if(!track.file && !track.src) {
-      requestFile();
+      mixStarting=false;syncControls();requestFile();
       setStatus('Le mix attend son fichier audio. Sélectionnez un fichier local pour l’essayer.');
       return;
     }
     releaseSource(false);
-    mode='file';
-    const audio=new Audio();media=audio;
+    mixStarting=true;mode='file';syncControls();
+    const audio=(!track.file&&preparedAudio)||new Audio();if(audio===preparedAudio)preparedAudio=null;media=audio;
     if(track.file){objectURL=URL.createObjectURL(track.file);audio.src=objectURL;}
-    else{audio.crossOrigin='anonymous';audio.src=track.src;}
+    else if(!audio.src){audio.crossOrigin='anonymous';audio.src=track.src;}
     audio.preload='auto';
     for(const event of ['loadedmetadata','durationchange','timeupdate','seeking','seeked','ratechange'])audio.addEventListener(event,()=>{
       if(media!==audio)return;
@@ -438,7 +457,7 @@ async function startMix() {
     mediaSource=context.createMediaElementSource(audio);mediaSource.connect(analyser);analyser.connect(context.destination);
     audio.addEventListener('playing',()=>{
       if(media!==audio)return;
-      playing=true;visualPaused=false;setShutter(true);syncControls();
+      mixStarting=false;playing=true;visualPaused=false;setShutter(true);syncControls();
       setStatus('MIX en lecture. Volet ouvert.');
     });
     audio.addEventListener('pause',()=>{
@@ -568,11 +587,11 @@ surface.addEventListener('click',()=>{feedback.unlock();if(playing)pausePlayback
 for(const [button,kind] of [[mixButton,'lever'],[stopButton,'stop'],[pauseButton,'pause'],[playButton,'play'],[shareButton,'share']])button.addEventListener('click',()=>{feedback.play(kind);});
 picker.addEventListener('change',()=>{loadFile(picker.files[0]);picker.value='';});
 playButton.addEventListener('click',resumePlayback);
-pauseButton.addEventListener('click',()=>{++inputGeneration;if(mode!=='idle')pausePlayback();else{clockArmed=false;syncControls();}});
+pauseButton.addEventListener('click',()=>{++inputGeneration;if(mode!=='idle'||mixStarting)pausePlayback();else{clockArmed=false;syncControls();}});
 stopButton.addEventListener('click',stopPlayback);
 shareButton.addEventListener('click',shareSite);
 mixButton.addEventListener('click',()=>{
-  if(playing && mode==='file'){++inputGeneration;pausePlayback(true);}
+  if(mixStarting||(playing && mode==='file')){++inputGeneration;pausePlayback(true);}
   else startMix();
 });
 window.addEventListener('dragover',event=>{event.preventDefault();surface.classList.add('dragging');});
@@ -601,8 +620,8 @@ function queueFrame() {
 function reconcilePlayback() {
   if(mode!=='file'||!media)return;
   const audible=!media.paused&&!media.ended&&(media.readyState>=2||media.currentTime>0);
-  if(audible&&(!playing||visualPaused)) {
-    playing=true;visualPaused=false;
+  if(audible&&(!playing||visualPaused||mixStarting)) {
+    mixStarting=false;playing=true;visualPaused=false;
     if(!shutterOpen)setShutter(true);
     syncControls();
   }else if(media.paused&&playing){playing=false;visualPaused=true;syncControls();}
@@ -727,6 +746,19 @@ function wakeGraphics() {
 }
 if(gl)bindGraphicsContext(canvas);
 initializeGraphics();queueFrame();
+// Compile and draw behind the closed shutter before exposing the controls.
+if(document.documentElement){
+  document.querySelector('main').inert=true;
+  if(graphicsReady){try{drawGraphics();gl.finish();}catch(error){console.error(error);}}
+  Promise.all([scene.ready,mixesReady.then(()=>preparedAudioReady)]).then(()=>{
+    if(disposed)return;
+    requestAnimationFrame(()=>{
+      document.documentElement.dataset.loading='false';
+      document.querySelector('main').inert=false;
+      document.querySelector('#startup').hidden=true;
+    });
+  });
+}
 document.addEventListener('visibilitychange',()=>{
   feedback.setVisible(!document.hidden);
   if(document.hidden){cancelAnimationFrame(animationRequest);animationRequest=0;}
