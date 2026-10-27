@@ -1,16 +1,16 @@
 import { WorldDeck } from './video-score.mjs';
 import { MetalShutter } from './shutter.mjs?v=20';
-import { StreetScene } from './model-scene.mjs?v=22';
-import { UniverseRenderer, universeNames } from './universes.mjs?v=22';
+import { StreetScene } from './model-scene.mjs?v=23';
+import { UniverseRenderer, universeNames } from './universes.mjs?v=23';
 import { createMediaControls } from './media-controls.mjs';
 import { MechanicalFeedback } from './mechanics.mjs?v=13';
-import { PortableRenderer } from './portable-renderer.mjs?v=22';
 import { createTrackClock } from './track-clock.mjs?v=13';
 import { applyPlace } from './places.mjs?v=20';
 
 let canvas = document.querySelector('#canvas');
 const surface = document.querySelector('#surface');
 const visualWindow = document.querySelector('#visual-window');
+const graphicsNotice=document.querySelector('#graphics-notice');
 const place = applyPlace(surface);
 const scene = new StreetScene(document.querySelector('#model-canvas'),visualWindow,place);
 surface.dataset.placeReady='true';
@@ -63,15 +63,9 @@ function setShutter(open) {
 function requestFile() {
   picker.click();
 }
-const contextOptions={antialias:false,alpha:false,powerPreference:'default'};
-const mobilePlatform=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'')||navigator.userAgentData?.mobile===true||navigator.userAgentData?.platform==='Android'||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)||matchMedia('(max-width:600px)').matches;
-let graphicsLevel=mobilePlatform?1:0;
-function acquireContext(target){
-  if(graphicsLevel===2)return null;
-  const kinds=graphicsLevel===0?['webgl2','webgl','experimental-webgl']:['webgl','experimental-webgl'];
-  for(const kind of kinds){try{const result=target.getContext(kind,contextOptions);if(result){if(kind!=='webgl2')graphicsLevel=1;return result;}}catch{}}
-  graphicsLevel=2;return null;
-}
+// One renderer and one quality policy on desktop, Android and iOS.
+const contextOptions={antialias:false,alpha:false,powerPreference:'high-performance'};
+function acquireContext(target){try{return target.getContext('webgl2',contextOptions);}catch{return null;}}
 let gl=acquireContext(canvas);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const setStatus = (message, error = false) => {
@@ -598,8 +592,9 @@ window.addEventListener('keydown',async event=>{
 });
 
 let last=performance.now(),lastDraw=0,animationRequest=0;
-let graphicsReady=false,graphicsRestoreTimer=0,renderQuality=1,slowFrames=0,disposed=false;
-let portableRenderer=null,graphicsSeed,checkOutput=true,checkedWorld=null;
+let graphicsReady=false,graphicsRestoreTimer=0,disposed=false;
+const renderQuality=1;
+let graphicsSeed,checkOutput=true,checkedWorld=null;
 function queueFrame() {
   if(!disposed&&!animationRequest)animationRequest=requestAnimationFrame(frame);
 }
@@ -612,27 +607,22 @@ function reconcilePlayback() {
     syncControls();
   }else if(media.paused&&playing){playing=false;visualPaused=true;syncControls();}
 }
+function graphicsUnavailable(){
+  graphicsReady=false;canvas.dataset.renderer='unavailable';graphicsNotice.hidden=false;
+  setStatus('Le rendu haute qualité n’a pas pu démarrer. Utilisez un navigateur récent avec l’accélération graphique activée.',true);
+  return false;
+}
 function initializeGraphics() {
-  const previous=portableRenderer||universeRenderer;
-  graphicsSeed ??= previous?.palettes?.seed;
+  const previous=universeRenderer;graphicsSeed ??= previous?.palettes?.seed;
+  if(!gl)return graphicsUnavailable();
   try {
-    if(graphicsLevel===0){
-      initRenderer();portableRenderer=null;
-      universeRenderer=new UniverseRenderer(gl,compile,fieldVertex,{seed:graphicsSeed});
-      if(previous?.flow){universeRenderer.flow.set(previous.flow);universeRenderer.flowKey=previous.flowKey;}
-      graphicsSeed=universeRenderer.palettes.seed;
-    }else{
-      portableRenderer=new PortableRenderer(canvas,gl,{seed:graphicsSeed,grid:mobilePlatform?112:160});if(previous?.flow){portableRenderer.flow.set(previous.flow);portableRenderer.flowKey=previous.flowKey;}universeRenderer=null;
-      graphicsSeed=portableRenderer.palettes.seed;
-    }
-    canvas.dataset.renderer=gl?(graphicsLevel===0?'raymarch':'surface-mesh'):'canvas2d';checkOutput=true;
-    graphicsReady=true;lastDraw=0;slowFrames=0;
-    return true;
-  }catch(error){
-    graphicsReady=false;console.error(error);
-    if(graphicsLevel<2){graphicsLevel++;replaceGraphicsCanvas();return graphicsReady;}
-    setStatus('Le rendu graphique n’a pas pu démarrer.',true);return false;
-  }
+    initRenderer();
+    universeRenderer=new UniverseRenderer(gl,compile,fieldVertex,{seed:graphicsSeed});
+    if(previous?.flow){universeRenderer.flow.set(previous.flow);universeRenderer.flowKey=previous.flowKey;}
+    graphicsSeed=universeRenderer.palettes.seed;
+    canvas.dataset.renderer='raymarch';canvas.dataset.quality='full';graphicsNotice.hidden=true;checkOutput=true;
+    graphicsReady=true;lastDraw=0;return true;
+  }catch(error){console.error(error);return graphicsUnavailable();}
 }
 function replaceGraphicsCanvas() {
   graphicsRestoreTimer=0;
@@ -646,8 +636,7 @@ function replaceGraphicsCanvas() {
   if(initializeGraphics())setStatus(playing?'MIX en lecture. Image rétablie.':'Image rétablie.');
 }
 function scheduleGraphicsRecovery() {
-  if(graphicsReady)graphicsLevel=Math.min(2,graphicsLevel+1);
-  graphicsReady=false;renderQuality=Math.max(.6,renderQuality*.8);
+  graphicsReady=false;
   if(!graphicsRestoreTimer)graphicsRestoreTimer=setTimeout(replaceGraphicsCanvas,1200);
 }
 function bindGraphicsContext(target) {
@@ -663,11 +652,9 @@ function bindGraphicsContext(target) {
   });
 }
 function drawGraphics() {
-  const size=Math.max(1,Math.round(Math.min(640,canvas.clientWidth*Math.min(devicePixelRatio,1.35))*renderQuality));
+  const size=Math.max(1,Math.ceil(canvas.clientWidth*Math.max(2,devicePixelRatio||1)));
+  canvas.dataset.resolution=String(size);
   if(canvas.width!==size||canvas.height!==size){canvas.width=size;canvas.height=size;if(gl)gl.viewport(0,0,size,size);}
-  if(portableRenderer){
-    portableRenderer.resize(size);portableRenderer.render(visualTime,[bass,mid,high],transients,universeFrom,universeTo,universeBlend,waveform,!visualPaused);
-  }else{
   universeRenderer.resize(size);
   if(!visualPaused)universeRenderer.uploadSignal(waveform,spectrum,context?.sampleRate);
   const needsRelief=universeTo===0 || (universeFrom===0 && universeBlend<1);
@@ -700,7 +687,6 @@ function drawGraphics() {
     gl.drawArraysInstanced(gl.TRIANGLES,0,vertexCount,cells);
   }
   universeRenderer.render(visualTime,[bass,mid,high],transients,universeFrom,universeTo,universeBlend);
-  }
   if(gl){
     const error=gl.getError();if(error)throw new Error(`WebGL draw error ${error}`);
     const world=universeBlend===1?universeTo:null;
@@ -729,10 +715,7 @@ function frame(now) {
   if(!graphicsReady)return;
   if(gl?.isContextLost()){scheduleGraphicsRecovery();return;}
   if(!shutterOpen&&now>shutterUntil)return;
-  if(now-lastDraw<(visualPaused?200:reducedMotion.matches||!gl?66:portableRenderer?33:16))return;
-  if(!visualPaused&&lastDraw>0&&now-lastDraw>45)slowFrames++;
-  else slowFrames=Math.max(0,slowFrames-1);
-  if(slowFrames>=6){renderQuality=Math.max(.6,renderQuality*.85);slowFrames=0;}
+  if(now-lastDraw<(visualPaused?200:reducedMotion.matches?66:16))return;
   lastDraw=now;
   try{drawGraphics();}
   catch(error){console.error(error);scheduleGraphicsRecovery();setStatus('Rétablissement de l’image en cours. Le son continue.');}
@@ -756,5 +739,5 @@ window.addEventListener('pageshow',wakeGraphics);
 window.addEventListener('pagehide',event=>{
   if(event.persisted)return;
   disposed=true;cancelAnimationFrame(animationRequest);clearTimeout(graphicsRestoreTimer);
-  ++inputGeneration;releaseSource();shutter.dispose();scene.dispose();portableRenderer?.dispose();feedback.dispose();mediaControls.dispose();context?.close();
+  ++inputGeneration;releaseSource();shutter.dispose();scene.dispose();feedback.dispose();mediaControls.dispose();context?.close();
 });
