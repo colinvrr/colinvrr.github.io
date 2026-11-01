@@ -1,8 +1,8 @@
 import {loft, paintedMaterial, sculptedHead, hairLock, hand, aimLimb} from './ps2-characters.mjs?v=48';
-import {buildBerlinFacade} from './berlin-scene.mjs?v=48';
+import {buildBerlinFacade} from './berlin-scene.mjs?v=49';
 import {buildBerlinStudio} from './berlin-studio.mjs';
 import {djHandsUp} from './dance-performance.mjs';
-import {BerlinStageEffects} from './berlin-fx.mjs';
+import {BerlinStageEffects} from './berlin-fx.mjs?v=50';
 // A real recessed ground-floor room: the performer, counter, records and plant
 // are volumes behind the glazing, never a painted replacement for the scene.
 export function buildApartment(owner){

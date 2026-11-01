@@ -1,5 +1,5 @@
-import {buildApartment, ApartmentDJ} from './apartment-scene.mjs?v=49';
-import {buildBerlinNeighbors} from './berlin-scene.mjs?v=48';
+import {buildApartment, ApartmentDJ} from './apartment-scene.mjs?v=50';
+import {buildBerlinNeighbors} from './berlin-scene.mjs?v=49';
 import {BerlinReactivity} from './berlin-reactivity.mjs?v=47';
 import * as B from './vendor/babylon.min.js';
 import {buildNeighbors} from './street-neighbors.mjs?v=70';

@@ -1,4 +1,4 @@
-import {berlinEffectsFrame} from './berlin-fx.mjs';
+import {berlinEffectsFrame} from './berlin-fx.mjs?v=50';
 const clamp=v=>Math.max(0,Math.min(1,Number(v)||0));
 function rgb(h){
  const sector=h*6,i=Math.floor(sector),f=sector-i,p=.12,q=1-f*.88,t=.12+f*.88;
