@@ -76,17 +76,18 @@ function pipe(s,x){
 function berlinStreetFurniture(s){
  // Slender Berlin courtyard lamp, with a visible emitter and real point light.
  const steel='#3b474b',dark='#202b30';
- s.tube([[1080,760,72],[1080,1160,72]],steel,7,'steel');
- s.tube([[1080,774,72],[1031,774,72],[1015,792,72]],steel,5,'steel');
- s.box(1008,792,34,12,22,72,dark,null,'steel',1);
- s.box(1013,797,24,4,12,72,'#b7ff9a',null,'interior-glow',1);
+ const x=1038;
+ s.tube([[x,760,72],[x,1160,72]],steel,7,'steel');
+ s.tube([[x,774,72],[x-49,774,72],[x-65,792,72]],steel,5,'steel');
+ s.box(x-72,792,34,12,22,72,dark,null,'steel',1);
+ s.box(x-67,797,24,4,12,72,'#b7ff9a',null,'interior-glow',1);
  if(s.engine){
   const B=s.api,bulb=B.MeshBuilder.CreateSphere('berlin-street-lamp-bulb',{diameter:18,segments:12},s.scene);
-  bulb.position=s.vec(1018,803,72);s.add(bulb,'#b7ff9a',null,'interior-glow',false);
+  bulb.position=s.vec(x-62,803,72);s.add(bulb,'#b7ff9a',null,'interior-glow',false);
   const light=new B.HemisphericLight('berlin-street-lamp-light',new B.Vector3(0,-1,0),s.scene);s.berlinLampLight=light;s.berlinLampBulb=bulb;
-  light.diffuse=new B.Color3(.55,1,.42);light.groundColor=new B.Color3(.04,.08,.04);light.intensity=.14;light.includedOnlyMeshes=[bulb];
+  light.diffuse=new B.Color3(.55,1,.42);light.groundColor=new B.Color3(.04,.08,.04);light.intensity=.32;light.includedOnlyMeshes=[bulb];
   }
-  s.box(1072,1156,17,8,17,72,dark,null,'steel',1);
+  s.box(x-8,1156,17,8,17,72,dark,null,'steel',1);
 }
 export function buildBerlinNeighbors(s){
  s.neighborRoom=0;

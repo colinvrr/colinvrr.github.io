@@ -5,18 +5,20 @@ export function berlinEffectsFrame(time,bands=[],transients=[],reduced=false){
  const bass=clamp(bands[0]),mid=clamp(bands[1]),high=clamp(bands[2]),attack=clamp(transients[0]);
  const sound=clamp(bass*.6+mid*.3+high*.1),motion=reduced?.15:1;
  return {laser:clamp((mid*.7+high*.55+attack*.3)*1.8),smoke:clamp(sound*1.4),
-  smokeMachine:clamp((bass*.8+attack*.75)*1.4)*(reduced?.35:1),motion,time};
+  smokeMachine:clamp((bass*.8+attack*.75)*1.4)*(reduced?.35:1),motion,time,
+  colorPhase:(time*.32+mid*.8+attack*.35)%1};
 }
 
-// High-energy aerial lasers shooting out of the studio towards the street.
+// Beams stay behind the facade, inside the studio volume. Their endpoints
+// never cross the facade plane at z=-94.
 export function berlinLaserPath(index,time,motion=1){
  const column=index%2,lane=Math.floor(index/2);
  const beat=Math.sin(time*6.28+index*1.57)*motion;
- const x=390+column*440+(lane-1)*30,y=735+lane*50;
- const targetX=(column?260:980)+beat*(column?-160:160);
- const targetY=620+Math.sin(time*3.8+index*1.2)*200;
- const targetZ=160+Math.abs(Math.sin(time*2.5+index*1.3))*130;
- return {from:[x,y,-220],to:[targetX,targetY,targetZ]};
+ const x=390+column*440+(lane-1)*30,y=724+lane*12;
+ const targetX=(column?830:410)+beat*(column?-120:120);
+ const targetY=1060+Math.sin(time*3.8+index*1.2)*55;
+ const targetZ=-430+Math.sin(time*2.5+index*1.3)*18;
+ return {from:[x,y,-318],to:[targetX,targetY,targetZ]};
 }
 
 export class BerlinStageEffects{
@@ -25,13 +27,23 @@ export class BerlinStageEffects{
   const B=s.api,scene=s.scene;
   this.up=new B.Vector3(0,1,0);this.quaternion=new B.Vector3().toQuaternion().constructor;
   const material=(name,color)=>{const m=new B.StandardMaterial(name,scene);m.disableLighting=true;m.emissiveColor=B.Color3.FromHexString(color);m.diffuseColor=B.Color3.Black();m.specularColor=B.Color3.Black();m.alpha=0;m.backFaceCulling=false;m.disableDepthWrite=true;return m;};
-  const colors=['#00ff77','#00f5ff','#ff007f','#ffef00','#b528ff','#38dcff'];
+  const colors=['#00f5ff','#ff007f','#ffef00','#b528ff','#00ff77','#ff6b35'];
   for(let i=0;i<6;i++){
    const core=B.MeshBuilder.CreateCylinder(`studio-laser-core-${i}`,{height:1,diameter:4.5,tessellation:10},scene);
    const halo=B.MeshBuilder.CreateCylinder(`studio-laser-halo-${i}`,{height:1,diameter:34,tessellation:10},scene);
    core.material=material(`laser-core-${i}`,colors[i]);halo.material=material(`laser-halo-${i}`,colors[i]);
    for(const mesh of [core,halo]){mesh.isPickable=false;mesh.setEnabled(false);}
    this.lasers.push({core,halo});
+  }
+  this.projectors=[];
+  for(let i=0;i<3;i++){
+   const x=350+i*320;
+   const housing=B.MeshBuilder.CreateBox(`ceiling-projector-${i}`,{width:92,height:24,depth:58},scene);
+   housing.position=s.vec(x,704,-318);housing.material=material(`projector-housing-${i}`,'#283338');housing.material.alpha=1;
+   const lens=B.MeshBuilder.CreateCylinder(`ceiling-projector-lens-${i}`,{height:3,diameter:22,tessellation:12},scene);
+   lens.position=s.vec(x,717,-318);lens.rotation.x=Math.PI/2;lens.material=material(`projector-lens-${i}`,colors[i*2]);
+   lens.material.alpha=1;
+   for(const mesh of [housing,lens]){mesh.isPickable=false;this.projectors.push(mesh);}
   }
   // Irregular, translucent smoke sprites: layered density and transparent edges.
   const c=document.createElement('canvas');c.width=c.height=256;const ctx=c.getContext('2d');
@@ -61,17 +73,27 @@ export class BerlinStageEffects{
  }
  apply(frame){
   if(!this.s.engine)return false;
-  const s=this.s,{time:t,motion}=frame,opening=clamp(((s.progress??1)-.65)/.35);
+  const s=this.s,{time:t,motion}=frame,B=s.api,opening=clamp(((s.progress??1)-.65)/.35);
   const laser=frame.laser*opening,smoke=frame.smoke*opening,machine=frame.smokeMachine*opening;
+  const palette=['#00f5ff','#ff007f','#ffef00','#b528ff','#00ff77','#ff6b35'];
+  const blendPhase=frame.colorPhase??0;
   for(let i=0;i<this.lasers.length;i++){
    const {core,halo}=this.lasers[i],ray=berlinLaserPath(i,t,motion),from=s.vec(...ray.from),to=s.vec(...ray.to);
    const direction=to.subtract(from),length=direction.length(),midpoint=from.add(to).scale(.5);
    const rotation=this.quaternion.FromUnitVectorsToRef(this.up,direction.normalize(),new this.quaternion());
    const blink=Math.sin(t*7.5+i*1.31)>.04?1:0;
+   const colorIndex=Math.floor((blendPhase*palette.length+i*.5)%palette.length);
+   const nextColor=palette[(colorIndex+1)%palette.length];
+   const color=B.Color3.Lerp(B.Color3.FromHexString(palette[colorIndex]),B.Color3.FromHexString(nextColor),Math.max(0,(blendPhase*palette.length+i*.5)%1));
+   core.material.emissiveColor=color;halo.material.emissiveColor=color;
    const intensity=laser*blink*(.75+.25*(.5+.5*Math.sin(t*14+i)));
    for(const [mesh,alpha]of [[halo,.28],[core,1]]){
     mesh.position.copyFrom(midpoint);mesh.scaling.y=length;mesh.rotationQuaternion=rotation;
     mesh.material.alpha=intensity*alpha;mesh.setEnabled(mesh.material.alpha>.005);
+   }
+   for(let i=0;i<this.projectors.length;i+=2){
+    const lens=this.projectors[i+1],color=B.Color3.FromHexString(palette[Math.floor((blendPhase*palette.length+i)%palette.length)]);
+    lens.material.emissiveColor=color;lens.material.alpha=.45+laser*.55;
    }
   }
   for(let i=0;i<this.smoke.length;i++){

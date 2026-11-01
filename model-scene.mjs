@@ -435,16 +435,16 @@ export class StreetScene {
   const dusk=Math.min(1,night*1.35),berlin=this.place?.theme==='berlin';
   const sky=this.skyLight,sun=this.sunLight;
   if(sky){
-   sky.intensity=(berlin?.18:.16)+(berlin?.55:.72)*daylight;
-   sky.diffuse=B.Color3.Lerp(berlin?new B.Color3(.13,.19,.3):new B.Color3(.2,.16,.22),berlin?new B.Color3(.6,.74,.92):new B.Color3(.86,.79,.83),daylight);
-   sky.groundColor=B.Color3.Lerp(new B.Color3(.025,.035,.07),berlin?new B.Color3(.28,.32,.38):new B.Color3(.36,.27,.22),daylight);
+   sky.intensity=(berlin?.09:.16)+(berlin?.62:.72)*daylight;
+   sky.diffuse=B.Color3.Lerp(berlin?new B.Color3(.06,.12,.27):new B.Color3(.2,.16,.22),berlin?new B.Color3(.6,.74,.92):new B.Color3(.86,.79,.83),daylight);
+   sky.groundColor=B.Color3.Lerp(new B.Color3(.012,.025,.075),berlin?new B.Color3(.28,.32,.38):new B.Color3(.36,.27,.22),daylight);
   }
   if(sun){
-   sun.intensity=(berlin?.05:.08)+(berlin?1.4:2.95)*daylight;
+   sun.intensity=(berlin?.025:.08)+(berlin?1.4:2.95)*daylight;
    sun.diffuse=B.Color3.Lerp(new B.Color3(.16,.2,.4),berlin?new B.Color3(.74,.79,.9):new B.Color3(1,.52,.2),daylight);
   }
-  this.scene.ambientColor=B.Color3.Lerp(new B.Color3(.025,.035,.07),new B.Color3(.13,.14,.16),daylight);
-  if(this.streetLight)this.streetLight.intensity=(berlin?.2:.22)+(berlin?.52:.83)*daylight;
+  this.scene.ambientColor=B.Color3.Lerp(berlin?new B.Color3(.012,.022,.065):new B.Color3(.025,.035,.07),new B.Color3(.13,.14,.16),daylight);
+  if(this.streetLight)this.streetLight.intensity=(berlin?.32:.22)+(berlin?.52:.83)*daylight;
   if(this.parisNeighborLight){
    this.parisNeighborLight.intensity=berlin?.16+dusk*.42:.08+dusk*.86;
    const interiorWarm=B.Color3.FromHexString(berlin?'#9cb9d0':'#ffd39a');
@@ -463,9 +463,9 @@ export class StreetScene {
    material.emissiveColor=B.Color3.FromHexString('#f0b96e').scale(dusk*.16);
   }
   if(this.parisLampLight)this.parisLampLight.intensity=.12+dusk*1.8;
-  if(this.berlinLampLight)this.berlinLampLight.intensity=.08+dusk*.25;
+  if(this.berlinLampLight)this.berlinLampLight.intensity=.18+dusk*1.05;
   if(this.parisLampBulb?.material)this.parisLampBulb.material.emissiveColor=B.Color3.FromHexString('#f4c778').scale(.55+dusk*3.4);
-  if(this.berlinLampBulb?.material)this.berlinLampBulb.material.emissiveColor=B.Color3.FromHexString('#b7ff9a').scale(.25+dusk*1.5);
+  if(this.berlinLampBulb?.material)this.berlinLampBulb.material.emissiveColor=B.Color3.FromHexString('#b7ff9a').scale(.5+dusk*3.2);
   if(this.parisLampProjectionMaterial){
    this.parisLampProjectionMaterial.alpha=dusk*.58;
    this.parisLampProjection?.setEnabled(dusk>.015);
