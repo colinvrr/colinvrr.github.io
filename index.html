@@ -13,10 +13,10 @@
 <meta property="og:url" content="https://colinvrr.github.io/">
 <link rel="icon" href="data:,">
 <link rel="modulepreload" href="./vendor/babylon.min.js">
-<link rel="modulepreload" href="./model-scene.mjs?v=31">
-<link rel="modulepreload" href="./universes.mjs?v=26">
-<link rel="preload" href="./mixes.json?v=31" as="fetch" crossorigin>
-<link rel="stylesheet" href="./style.css?v=31">
+<link rel="modulepreload" href="./model-scene.mjs?v=53">
+<link rel="modulepreload" href="./universes.mjs?v=36">
+<link rel="preload" href="./mixes.json?v=38" as="fetch" crossorigin>
+<link rel="stylesheet" href="./style.css?v=50">
 </head>
 <body>
 <audio id="preloaded-mix" src="./audio/sofasurfs-minimix.mp3" preload="metadata" crossorigin="anonymous" hidden></audio>
@@ -28,32 +28,54 @@
 <span id="startup" class="startup" aria-hidden="true"><span class="startup-light"></span></span>
 </button>
 <canvas id="model-canvas" class="model-canvas" aria-hidden="true"></canvas>
-<div class="controls" role="group" aria-label="Commandes de lecture">
-<div class="transport-wrap"><div class="transport">
-<button class="push-button" id="stop" type="button" aria-label="Arrêt et fermeture du volet"><span class="button-face"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5h10v10H5z"/></svg></span></button>
-<button class="push-button" id="pause" type="button" aria-label="Pause" aria-pressed="false"><span class="button-face"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 4h3.5v12H5zm6.5 0H15v12h-3.5z"/></svg></span></button>
-<button class="push-button" id="play" type="button" aria-label="Lecture" aria-pressed="false"><span class="button-face"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.5 16 10 6 16.5Z"/></svg></span></button>
-<button class="push-button share-button" id="share" type="button" aria-label="Partager le site"><span class="button-face"><span id="share-label">SHARE</span></span></button>
-</div>
-<div class="lcd-clock" data-power="off" role="group" aria-label="Compteur du mix éteint"><output id="mix-time" class="lcd-screen" aria-label="Temps écoulé et durée du mix" aria-live="off" aria-hidden="true"></output><span class="lcd-led" aria-hidden="true"></span></div></div>
-<div class="mix-controls" role="group" aria-label="Commande du mix">
-<div class="mix-unit">
-<span class="led" id="mix-led" role="img" aria-label="MIX à l’arrêt"></span>
-<button class="lever" id="mix" type="button" role="switch" aria-checked="false" aria-label="Lancer le mix" data-invite="true">
-<span class="lever-plate" aria-hidden="true"><span class="plate-screw"></span><span class="plate-screw"></span><span class="plate-screw"></span><span class="plate-screw"></span></span>
-<span class="lever-gate" aria-hidden="true"></span><span class="lever-socket" aria-hidden="true"></span>
-<span class="lever-stem" aria-hidden="true"><span class="lever-grip"></span></span>
+<div class="controls" role="group" aria-label="Platine de lecture">
+<div class="mix-controls" role="radiogroup" aria-label="Choisir une scène">
+<div class="mix-unit" id="mix-unit" data-selected="true">
+<button class="lever" id="mix" type="button" role="radio" aria-checked="true" aria-label="01 Paris" tabindex="0">
+<span class="lever-plate" aria-hidden="true"><span class="plate-screw"></span><span class="plate-screw"></span></span>
+<span class="lever-gate" aria-hidden="true"></span><span class="lever-socket" aria-hidden="true"></span><span class="lever-stem" aria-hidden="true"><span class="lever-grip"></span></span>
 </button>
-<label class="mix-label" for="mix">MIX</label>
+<label class="mix-label" for="mix"><span class="led" id="mix-led" aria-hidden="true" data-on="true"></span><span>01 Paris</span></label>
+</div>
+<div class="mix-unit" id="mix2-unit" data-selected="false">
+<button class="lever" id="mix2" type="button" role="radio" aria-checked="false" aria-label="02 Berlin" tabindex="-1">
+<span class="lever-plate" aria-hidden="true"><span class="plate-screw"></span><span class="plate-screw"></span></span>
+<span class="lever-gate" aria-hidden="true"></span><span class="lever-socket" aria-hidden="true"></span><span class="lever-stem" aria-hidden="true"><span class="lever-grip"></span></span>
+</button>
+<label class="mix-label" for="mix2"><span class="led" id="mix2-led" aria-hidden="true" data-on="false"></span><span>02 Berlin</span></label>
+</div>
+</div>
+<div class="transport" role="group" aria-label="Lecture">
+<button class="push-button primary-button" id="play" type="button" aria-label="Lecture" aria-pressed="false"><span class="button-face"><svg class="play-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.5 16 10 6 16.5Z"/></svg><svg class="pause-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 4h3.5v12H5zm6.5 0H15v12h-3.5z"/></svg><span id="play-label">Lecture</span></span></button>
+<button class="push-button" id="stop" type="button" aria-label="Stop : remettre au début et fermer le volet"><span class="button-face"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5h10v10H5z"/></svg><span>Stop</span></span></button>
+</div>
+<div class="track-details" role="group" aria-label="Mix sélectionné">
+<div class="track-meta"><span id="playback-state">À l’arrêt</span><output id="mix-time" aria-label="Temps écoulé et durée du mix" aria-live="off">00:00 / --:--</output></div>
+<p id="mix-title">Chargement du mix…</p>
+<input id="seek" class="range seek" type="range" min="0" max="1" step="1" value="0" disabled aria-label="Position dans le mix" aria-valuetext="Durée inconnue">
+</div>
+<div class="volume-controls" role="group" aria-label="Volume de sortie">
+<button id="mute" class="quiet-button" type="button" aria-label="Couper le son" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h4l5-4v14l-5-4H3z"/><path class="sound-waves" d="M16 8c2 2 2 6 0 8m3-11c4 4 4 10 0 14"/><path class="mute-cross" d="m16 9 6 6m0-6-6 6"/></svg></button>
+<div class="volume-fader"><label for="volume">Volume <output id="volume-value">100 %</output></label><input id="volume" class="range" type="range" min="0" max="100" step="1" value="100" aria-label="Volume" aria-valuetext="100 %"></div>
+</div>
+<div class="utility-controls">
+<button class="quiet-button" id="share" type="button" aria-label="Partager le site"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M5 12v8h14v-8"/></svg><span id="share-label" class="sr-only">Partager</span></button>
+<button class="quiet-button" id="tools-toggle" type="button" aria-label="Outils audio et affichage" aria-expanded="false" aria-controls="tools-menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+<div class="tools-menu" id="tools-menu" role="group" aria-label="Outils audio et affichage" hidden>
+<button id="fullscreen" type="button">Plein écran <kbd>F</kbd></button>
+<button id="local-file" type="button">Fichier local <span>↗</span></button>
+<button id="microphone" type="button" aria-pressed="false">Microphone <kbd>M</kbd></button>
+<button id="tab-audio" type="button" aria-pressed="false">Audio d’onglet <kbd>S</kbd></button>
 </div>
 </div>
 </div>
 </section>
 <button id="scene-iris" class="scene-iris" type="button" aria-label="Passer la transition vers le prochain lieu" hidden></button>
+<button id="cancel-transition" class="transition-cancel" type="button" hidden>Annuler le changement de lieu</button>
 <input id="file" type="file" accept="audio/*,video/*,.flac,.opus,.ogg,.m4a,.wav,.mp3,.aiff" hidden>
-<p id="instructions" class="sr-only">Actionnez le levier MIX pour écouter le morceau et ouvrir le volet. Pause fige le son et l’image. Le bouton carré arrête la lecture, remet le mix au début et referme le volet. Désactiver le levier met le mix en pause et referme le volet. Cliquer sur le carré lance ou met en pause la lecture. Vous pouvez déposer un autre fichier audio sur le carré pour l’écouter localement. Espace : lecture ou pause. M : microphone. S : son d’un onglet. F : plein écran. Échap : arrêter et fermer le volet.</p>
+<p id="instructions" class="sr-only">Le levier 1 sélectionne Paris, le levier 2 sélectionne Berlin. Un seul levier reste enclenché à la fois. Sélectionner une scène ne lance pas sa musique et laisse son volet fermé. Play ouvre le volet et lance le mix du lieu choisi. Pause fige le son et l’image. Stop remet le mix au début et referme le volet. À la fin d’un mix, le chat rejoint le prochain lieu. Cliquer sur le décor lance ou met en pause la lecture. Espace : lecture ou pause. Flèches dans les sélecteurs : choisir un lieu. Flèches dans la progression : avancer ou reculer, Début et Fin : extrémités du mix. Le volume et le muet restent conservés entre les lieux. M : microphone. S : son d’un onglet. F : plein écran. Échap : arrêter et fermer le volet ou annuler le changement de lieu.</p>
 <p id="status" class="sr-only" role="status" aria-live="polite">Volet fermé. MIX à l’arrêt.</p>
 </main>
-<script type="module" src="./app.js?v=31"></script>
+<script type="module" src="./app.js?v=53"></script>
 </body>
 </html>

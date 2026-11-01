@@ -62,7 +62,7 @@ export class StreetCat {
  }
  material(name,color,emission=0){const B=this.B,m=new B.StandardMaterial(name,this.owner.scene);m.diffuseColor=B.Color3.FromHexString(color);m.emissiveColor=m.diffuseColor.scale(emission);m.specularColor=new B.Color3(.06,.06,.06);m.specularPower=24;m.ambientColor=new B.Color3(.6,.6,.6);this.materials.push(m);return m;}
  ball(name,parent,position,scale,material){
-  const B=this.B,mesh=B.MeshBuilder.CreateSphere(name,{diameter:2,segments:16},this.owner.scene);mesh.parent=parent;mesh.position=new B.Vector3(...position);mesh.scaling=new B.Vector3(...scale);mesh.material=material;mesh.isPickable=false;mesh.receiveShadows=true;this.meshes.push(mesh);return mesh;
+  const B=this.B,mesh=B.MeshBuilder.CreateSphere(name,{diameter:2,segments:this.owner.place?.theme==='berlin'?6:16},this.owner.scene);mesh.parent=parent;mesh.position=new B.Vector3(...position);mesh.scaling=new B.Vector3(...scale);mesh.material=material;mesh.isPickable=false;mesh.receiveShadows=true;if(this.owner.place?.theme==='berlin')mesh.convertToFlatShadedMesh();this.meshes.push(mesh);return mesh;
  }
  line(name,parent,points,radius,material){const B=this.B,mesh=B.MeshBuilder.CreateTube(name,{path:points.map(p=>new B.Vector3(...p)),radius,tessellation:8,cap:3},this.owner.scene);mesh.parent=parent;mesh.material=material;mesh.isPickable=false;this.meshes.push(mesh);return mesh;}
  ear(parent,side,inside=false){
@@ -79,7 +79,7 @@ export class StreetCat {
   this.body=this.ball('cat-body',this.root,[0,28,0],[14.5,15,24],this.coat);
   this.chest=this.ball('cat-chest',this.root,[0,36,15],[12.5,15,13],this.coat);
   this.head=new B.TransformNode('cat-head',scene);this.head.parent=this.root;this.head.position=new B.Vector3(0,46,23);
-  this.ball('cat-round-head',this.head,[0,0,0],[17.3,15.5,13],this.coat);
+  this.ball('cat-round-head',this.head,[0,0,0],this.owner.place?.theme==='berlin'?[15.5,13,13]:[17.3,15.5,13],this.coat);
   this.ear(this.head,-1);this.ear(this.head,1);this.ear(this.head,-1,true);this.ear(this.head,1,true);
   this.eyes=[];this.eyeParts=[];
   for(const side of [-1,1]){
@@ -89,6 +89,7 @@ export class StreetCat {
    this.ball('cat-orange-iris',eye,[0,0,.8],[4.9,5.7,1.35],this.orange);
    this.ball('cat-pupil',eye,[.15,0,1.9],[1.35,4.4,.55],this.ink);
    this.ball('cat-spark',eye,[-1.4,2.2,2.2],[1.05,1.05,.5],this.glint);
+   if(this.owner.place?.theme==='berlin')for(const m of this.meshes.slice(eyeStart)){m.scaling.x*=.72;m.scaling.y*=.53;}
    const parts=this.meshes.slice(eyeStart),lid=this.line('cat-closed-eye',eye,[[-4,0,1.8],[-2,-1,2.4],[0,-1.3,2.7],[2,-1,2.4],[4,0,1.8]],.44,this.ink);lid.setEnabled(false);this.eyeParts.push({parts,lid});
    this.ball('cat-muzzle',this.head,[side*3.5,-5.9,11.9],[5.3,4.2,3.1],this.light);
    this.line('cat-whisker',this.head,[[side*5,-5.5,14],[side*12,-5,14.5],[side*21,-3.2,13]],.24,this.light);

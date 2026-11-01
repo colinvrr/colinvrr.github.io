@@ -1,4 +1,5 @@
 import { FACADES, centeredBays, framedBays } from './facade-layout.mjs';
+import {decorateShallowWindow} from './architectural-glass.mjs';
 // Two fully modelled neighbours. Each has an independent construction grammar:
 // brick voussoirs and steel joinery on the left, curved Art Deco bays on the right.
 const stoneColors=['#c6b99f','#d3c5aa','#cbbda2','#d6c9b1'];
@@ -15,6 +16,8 @@ function polygon(scene,points,depth,z,color,map,kind='stone'){
 function leftArch(scene,x,y,w,h){
  const r=w/2,cy=y+r,cx=x+r,stone=scene.maps.stone.image;
  const glass=[[x,y+h],[x+w,y+h],[x+w,cy]];for(let i=1;i<=32;i++){const a=i/32*Math.PI;glass.push([cx+Math.cos(a)*r,cy-Math.sin(a)*r]);}
+ polygon(scene,glass,4,-55,'#20343d',null,'interior-recess');
+ decorateShallowWindow(scene,x,y,w,h,-47,Math.round(x/200));
  polygon(scene,glass,7,-36,'#314349',null,'glass');
  for(let i=0;i<19;i++){
   const a=i/19*Math.PI+.012,b=(i+1)/19*Math.PI-.012,ra=r+18;
@@ -67,6 +70,8 @@ function curvedBand(scene,x,y,w,h,projection,color,kind='stone'){
 }
 function bowWindow(scene,x,y,w,h){
  const color='#394e51',projection=69;
+ scene.box(x,y,w,h,4,-47,'#263d45',null,'interior-recess',.2);
+ decorateShallowWindow(scene,x,y,w,h,-37,Math.round(x/200)+1);
  curvedBand(scene,x,y,w,h,projection,color,'glass');
  for(const [yy,hh,c]of [[y-16,13,'#d1cfbe'],[y+h,15,'#c5c4b5'],[y+h+17,7,'#aeb3a5']])curvedBand(scene,x-8,yy,w+16,hh,76,c);
  for(const yy of [y+7,y+h*.47,y+h-7]){const line=[];for(let i=0;i<=40;i++){const u=i/40;line.push([x+w*u,yy,-19+Math.sin(u*Math.PI)*projection]);}scene.tube(line,'#a5b2a7',1.6,'steel');}

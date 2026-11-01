@@ -1,12 +1,12 @@
 import { WorldDeck } from './video-score.mjs';
 import { MetalShutter } from './shutter.mjs?v=20';
-import { StreetScene } from './model-scene.mjs?v=31';
-import { UniverseRenderer, universeNames } from './universes.mjs?v=26';
+import { StreetScene } from './model-scene.mjs?v=53';
+import { UniverseRenderer, universeNames } from './universes.mjs?v=36';
 import { createMediaControls } from './media-controls.mjs';
-import { MechanicalFeedback } from './mechanics.mjs?v=13';
-import { createTrackClock } from './track-clock.mjs?v=13';
-import { applyPlace, places } from './places.mjs?v=31';
-import { CatPassage } from './scene-passage.mjs?v=31';
+import { MechanicalFeedback } from './mechanics.mjs?v=43';
+import { createTrackClock, formatTime } from './track-clock.mjs?v=43';
+import { applyPlace, places } from './places.mjs?v=38';
+import { CatPassage } from './scene-passage.mjs?v=36';
 
 let canvas = document.querySelector('#canvas');
 const surface = document.querySelector('#surface');
@@ -19,12 +19,31 @@ surface.dataset.placeReady='true';
 const picker = document.querySelector('#file');
 const status = document.querySelector('#status');
 const playButton = document.querySelector('#play');
-const pauseButton = document.querySelector('#pause');
+const playLabel = document.querySelector('#play-label');
+const titleLabel = document.querySelector('#mix-title');
+const playbackState = document.querySelector('#playback-state');
+const seekInput = document.querySelector('#seek');
+const volumeInput = document.querySelector('#volume');
+const volumeValue = document.querySelector('#volume-value');
+const muteButton = document.querySelector('#mute');
+const toolsToggle = document.querySelector('#tools-toggle');
+const toolsMenu = document.querySelector('#tools-menu');
+const microphoneButton = document.querySelector('#microphone');
+const tabAudioButton = document.querySelector('#tab-audio');
+const fullscreenButton = document.querySelector('#fullscreen');
+const transitionCancel = document.querySelector('#cancel-transition');
+// This is the one media element used by mixes and local files, including after Stop.
+const mixAudio = document.querySelector('#preloaded-mix') || new Audio();
+let outputVolume=1,outputMuted=false,outputGain=null,queuedSeek=0;
 const stopButton = document.querySelector('#stop');
 const shareButton = document.querySelector('#share');
 const shareLabel = document.querySelector('#share-label');
 const mixButton = document.querySelector('#mix');
 const mixLed = document.querySelector('#mix-led');
+const mixUnit = document.querySelector('#mix-unit');
+const mix2Button = document.querySelector('#mix2');
+const mix2Led = document.querySelector('#mix2-led');
+const mix2Unit = document.querySelector('#mix2-unit');
 const track = {src:null, file:null,duration:0,title:'MIX'};
 const trackClock=createTrackClock(document.querySelector('#mix-time'));
 const feedback=new MechanicalFeedback();
@@ -32,24 +51,25 @@ feedback.setVisible(!document.hidden);
 const mediaControls=createMediaControls({
   getAudio:()=>mode==='file'?media:null,
   play:resumePlayback,
-  pause:()=>{++inputGeneration;if(passage?.active||mode!=='idle'||mixStarting)pausePlayback();else{clockArmed=false;syncControls();}},
+  pause:()=>{++inputGeneration;if(passage?.active||mode!=='idle'||mixStarting)pausePlayback();else{syncControls();}},
   stop:stopPlayback
 });
 let shutter = new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
-let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0,hasStarted=false,clockArmed=false;
+let playing=false, visualPaused=true, shutterOpen=false, shutterUntil=0;
 let preparedAudio=null,mixStarting=false;
-let chapters=[],chapterIndex=0,passage=null,automaticStart=false;
+let chapters=[],chapterIndex=0,passage=null;
+let sceneLoading=false;
 const audioNodes=new WeakMap();let mediaCleanup=[];
 function listenMedia(audio,event,listener){audio.addEventListener(event,listener);mediaCleanup.push(()=>audio.removeEventListener?.(event,listener));}
 let graphicsDirty=true;
 function prepareMixAudio(src,preferred){
-  const audio=preferred||document.getElementById?.('preloaded-mix')||new Audio();
+  const audio=preferred||mixAudio;
   audio.crossOrigin='anonymous';audio.preload='auto';
   if(audio.getAttribute?.('src')!==src)audio.src=src;
   preparedAudio=audio;
   if(audio.networkState!==2)audio.load();
 }
-const mixesReady = fetch('./mixes.json?v=31').then(response => {
+const mixesReady = fetch('./mixes.json?v=38').then(response => {
   if(!response.ok)throw new Error('Mix configuration unavailable');
   return response.json();
 }).then(config => {
@@ -57,28 +77,93 @@ const mixesReady = fetch('./mixes.json?v=31').then(response => {
  chapterIndex=Math.max(0,chapters.findIndex(item=>item.place===place.id));
  const first=chapters[chapterIndex]||config;track.src=first.src||null;track.title=first.title||'MIX';
  if(!track.file){track.duration=Number(first.duration)||0;trackClock.update(null,track.duration);if(track.src)prepareMixAudio(track.src);}
+ syncControls();
 })
 .catch(() => { /* Local file loading remains available without a configuration. */ });
 function syncControls() {
   graphicsDirty=true;
-  if(playing)hasStarted=true;
-  mixButton.dataset.invite=String(!hasStarted);
+  const secondPlace=place.model==='groundfloor-apartment';
+  mix2Unit.dataset.ready='true';
+  mixUnit.dataset.selected=String(!secondPlace);mix2Unit.dataset.selected=String(secondPlace);
+  mixUnit.hidden=false;
+  mix2Button.disabled=false;
+  mixButton.dataset.invite='false';
   playButton.setAttribute('aria-pressed',String(playing));
-  pauseButton.setAttribute('aria-pressed',String(!playing && mode!=='idle'));
-  const active=(playing && mode==='file')||mixStarting;
-  mixButton.dataset.pending=String(mixStarting);
-  mixButton.setAttribute('aria-checked',String(active));
-  mixButton.setAttribute('aria-label',active ? (place.model==='groundfloor-apartment'?'Mettre le mix en pause':'Mettre le mix en pause et fermer le volet') : 'Lancer le mix');
-  mixLed.dataset.on=String(active);
-  mixLed.setAttribute('aria-label',`MIX ${active?'en lecture':'à l’arrêt'}`);
+  playButton.setAttribute('aria-label',playing?'Pause':'Lecture');
+  playLabel.textContent=playing?'Pause':'Lecture';
+  playButton.setAttribute('aria-busy',String(mixStarting));
+  playbackState.textContent=mixStarting?'Chargement…':playing?'En lecture':mode!=='idle'?'En pause':'À l’arrêt';
+  titleLabel.textContent=mode==='microphone'?'Entrée microphone':mode==='screen'?'Audio d’onglet':track.file?.name?.replace(/\.[^.]+$/,'')||track.title;
+  titleLabel.title=titleLabel.textContent;
+  microphoneButton.setAttribute('aria-pressed',String(mode==='microphone'));
+  tabAudioButton.setAttribute('aria-pressed',String(mode==='screen'));
+  mixButton.tabIndex=secondPlace?-1:0;mix2Button.tabIndex=secondPlace?0:-1;
+  mixButton.setAttribute('aria-checked',String(!secondPlace));
+  mixButton.setAttribute('aria-label','01 Paris');
+  mixLed.dataset.on=String(!secondPlace);
+  mixLed.setAttribute('aria-label',!secondPlace?'Scène 1 sélectionnée':'Scène 1 non sélectionnée');
+  mix2Button.setAttribute('aria-checked',String(secondPlace));
+  mix2Button.setAttribute('aria-label','02 Berlin');
+  mix2Led.dataset.on=String(secondPlace);
+  mix2Led.setAttribute('aria-label',secondPlace?'Scène 2 sélectionnée':'Scène 2 non sélectionnée');
   mediaControls.update(mode==='file'?media:null,playing,track.file?.name?.replace(/\.[^.]+$/,'')||track.title||'MIX');
-  trackClock.update(mode==='file'?media:null,track.duration);
-  trackClock.setPower(clockArmed&&(mode==='file'||mode==='idle'));
+  updateTimeline();
+}
+// All time updates come from the existing media events; no additional frame loop.
+function updateTimeline(){
+  const audio=mode==='file'?media:null;
+  const duration=Number.isFinite(audio?.duration)&&audio.duration>0?audio.duration:track.duration;
+  const time=Math.max(0,audio?.currentTime||queuedSeek||0);
+  trackClock.update(audio||{currentTime:time},duration);
+  seekInput.disabled=!(duration>0)||(mode!=='idle'&&mode!=='file');
+  seekInput.max=String(duration>0?duration:1);
+  seekInput.value=String(Math.min(duration||0,time));
+  seekInput.setAttribute('aria-valuetext',`${formatTime(time)} sur ${formatTime(duration>0?duration:NaN)}`);
+  seekInput.style?.setProperty('--fill',`${duration>0?Math.min(100,time/duration*100):0}%`);
+}
+function seekMix(time){
+  if(seekInput.disabled||!Number.isFinite(time))return;
+  const audio=mode==='file'?media:preparedAudio;
+  const duration=Number.isFinite(audio?.duration)&&audio.duration>0?audio.duration:track.duration;
+  queuedSeek=Math.max(0,Math.min(duration,time));
+  if(audio&&audio.readyState>=1){try{audio.currentTime=queuedSeek;}catch{}}
+  mediaControls.position();updateTimeline();
+}
+function setOutputVolume(value){
+  if(!Number.isFinite(value))return;
+  outputVolume=Math.max(0,Math.min(1,value));
+  if(outputVolume>0)outputMuted=false;
+  syncOutput();
+}
+function syncOutput(){
+  // Gain follows the analyser. Lowering or muting playback never changes its signal.
+  if(outputGain)outputGain.gain.setValueAtTime(outputMuted?0:outputVolume,context.currentTime);
+  const silent=outputMuted||outputVolume===0;
+  feedback.setVolume?.(silent?0:outputVolume);
+  muteButton.setAttribute('aria-pressed',String(silent));
+  muteButton.setAttribute('aria-label',silent?'Rétablir le son':'Couper le son');
+  volumeInput.value=String(Math.round(outputVolume*100));
+  volumeInput.setAttribute('aria-valuetext',`${Math.round(outputVolume*100)} %${silent?' — muet':''}`);
+  volumeInput.style?.setProperty('--fill',`${outputVolume*100}%`);
+  volumeValue.textContent=silent?'Muet':`${Math.round(outputVolume*100)} %`;
+}
+function toggleMute(){
+  if(outputVolume===0){outputVolume=1;outputMuted=false;}else outputMuted=!outputMuted;
+  syncOutput();
+}
+function closeTools(restoreFocus=false){
+  toolsMenu.hidden=true;toolsToggle.setAttribute('aria-expanded','false');
+  if(restoreFocus)toolsToggle.focus();
+}
+async function toggleFullscreen(){
+  try{if(document.fullscreenElement)await document.exitFullscreen();else await document.querySelector('main').requestFullscreen();}
+  catch{setStatus('Le plein écran n’est pas disponible dans ce navigateur.',true);}
 }
 function setShutter(open) {
   shutterOpen=open;
   surface.dataset.open=String(open);
-  if(place.model==='groundfloor-apartment')scene.setProgress(open?1:0);else shutter.setOpen(open);
+  if(sceneLoading)return;
+  shutter?.setOpen(open);
   shutterUntil=performance.now()+2300;
 }
 function requestFile() {
@@ -396,11 +481,12 @@ async function audioGraph() {
   context ||= new (window.AudioContext||window.webkitAudioContext)();
   await context.resume();
   if(!analyser){analyser=context.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=.2;spectrum=new Float32Array(analyser.frequencyBinCount);waveform=new Float32Array(analyser.fftSize);}
+  if(!outputGain){outputGain=context.createGain();outputGain.connect(context.destination);syncOutput();}
 }
 function releaseSource(close=true) {
   for(const clean of mediaCleanup)clean();mediaCleanup=[];
   mixStarting=false;
-  if(close)clockArmed=false;
+  if(close){queuedSeek=0;}
   const previousMedia=media;
   media=null;
   if(previousMedia){previousMedia.pause();previousMedia.removeAttribute('src');previousMedia.load();}
@@ -419,7 +505,6 @@ function releaseSource(close=true) {
 function pausePlayback(close=false) {
   if(passage?.active){passage.pause();setStatus('Passage en pause.');return;}
   mixStarting=false;
-  if(close)clockArmed=false;
   playing=false;visualPaused=true;
   if(media)media.pause();
   else if(context && mode!=='idle')context.suspend().catch(()=>{});
@@ -434,9 +519,10 @@ function stopPlayback() {
   setStatus('Lecture arrêtée. Mix remis au début et volet fermé.');
 }
 async function startMix() {
+  if(sceneLoading)return;
   if(passage?.active){passage.skip();return;}
   const generation=++inputGeneration;
-  clockArmed=true;mixStarting=true;syncControls();trackClock.setPower(true);
+  mixStarting=true;syncControls();
   try {
     mediaControls.preparePlayback();
     await audioGraph();
@@ -453,20 +539,22 @@ async function startMix() {
     }
     releaseSource(false);
     mixStarting=true;mode='file';syncControls();
-    const audio=(!track.file&&preparedAudio)||new Audio();if(audio===preparedAudio)preparedAudio=null;media=audio;
+    const audio=preparedAudio||mixAudio;preparedAudio=null;media=audio;
     if(track.file){objectURL=URL.createObjectURL(track.file);audio.src=objectURL;}
-    else if(!audio.src){audio.crossOrigin='anonymous';audio.src=track.src;}
+    else if(audio.getAttribute?.('src')!==track.src){audio.crossOrigin='anonymous';audio.src=track.src;}
     audio.preload='auto';
     for(const event of ['loadedmetadata','durationchange','timeupdate','seeking','seeked','ratechange'])listenMedia(audio,event,()=>{
       if(media!==audio)return;
       if(Number.isFinite(audio.duration)&&audio.duration>0)track.duration=audio.duration;
-      mediaControls.position();trackClock.update(audio,track.duration);
+      if(event==='loadedmetadata'&&queuedSeek>0){try{audio.currentTime=queuedSeek;}catch{}queuedSeek=0;}
+      mediaControls.position();updateTimeline();
     });
-    mediaSource=audioNodes.get(audio);if(!mediaSource){mediaSource=context.createMediaElementSource(audio);audioNodes.set(audio,mediaSource);}mediaSource.connect(analyser);analyser.connect(context.destination);
+    mediaSource=audioNodes.get(audio);if(!mediaSource){mediaSource=context.createMediaElementSource(audio);audioNodes.set(audio,mediaSource);}mediaSource.connect(analyser);analyser.connect(outputGain);
+    if(queuedSeek>0&&audio.readyState>=1){audio.currentTime=queuedSeek;queuedSeek=0;}
     listenMedia(audio,'playing',()=>{
       if(media!==audio)return;
       mixStarting=false;playing=true;visualPaused=false;setShutter(true);syncControls();
-      setStatus(place.model==='groundfloor-apartment'?'Le mix de l’appartement est en lecture.':'MIX en lecture. Volet ouvert.');
+      setStatus(place.model==='groundfloor-apartment'?'Le mix de Berlin est en lecture.':'MIX en lecture. Volet ouvert.');
     });
     listenMedia(audio,'pause',()=>{
       if(media!==audio)return;
@@ -490,38 +578,77 @@ async function startMix() {
     await audio.play();
     if(generation!==inputGeneration && media===audio)pausePlayback(true);
   } catch(error) {
-    if(generation===inputGeneration){releaseSource();setStatus(automaticStart?'Le prochain mix est prêt. Appuyez sur Lecture pour le lancer.':'Lecture du mix impossible. Chargez un fichier audio compatible.',!automaticStart);}
+    if(generation===inputGeneration){releaseSource();setStatus('Lecture du mix impossible. Chargez un fichier audio compatible.',true);}
   }
 }
-function beginPassage(audio){
+async function selectScene(index){
+ const target=places[index];
+ if(!target||target.id===place.id)return;
+ if(sceneLoading)return;
+ if(passage?.active)return;
+ const generation=++inputGeneration;
+ await mixesReady;
+ await scene.ready;
+ if(disposed||generation!==inputGeneration)return;
+ const targetIndex=chapters.findIndex(chapter=>chapter.place===target.id);
+ if(targetIndex<0){setStatus('Cette scène n’est pas disponible pour le moment.',true);return;}
+ const audio=media||preparedAudio;
+ releaseSource();
+ beginPassage(audio,{index:targetIndex});
+}
+function beginPassage(audio,{index=(chapterIndex+1)%chapters.length}={}){
  if(disposed)return;
- const nextIndex=(chapterIndex+1)%chapters.length,next=chapters[nextIndex];
+ const nextIndex=index,next=chapters[nextIndex];
  const destination=places.find(item=>item.id===next.place);
  if(!destination){setStatus('MIX terminé. Volet fermé.');return;}
  passage?.dispose();
+ closeTools();
  passage=new CatPassage({getScene:()=>scene,machine,mask:document.querySelector('#scene-iris'),reduced:()=>reducedMotion.matches,visible:()=>!document.hidden,
   onSwap:async()=>{
-   const previousScene=scene,engine=scene.engine,version=passage.version;
+   const engine=scene.engine,previousPlace=place,transition=passage,version=transition.version;
    const modelCanvas=document.querySelector('#model-canvas');modelCanvas.style.transform='';modelCanvas.style.transformOrigin='';
+   sceneLoading=true;modelCanvas.dataset.sceneLoading='true';
+   shutter?.dispose();shutter=null;
+   scene.dispose({keepEngine:!!engine});
+   // The iris is fully black here. Retain only the shared engine/canvas;
+   // neither meshes nor procedural canvases from the old place survive.
+   scene={canvas:modelCanvas,engine,cat:{state:{visible:false}}};
+   if(destination.model!=='haussmann-store')releaseGraphicsSurface();
    let candidate;
+   const restore=async()=>{
+    candidate?.dispose({keepEngine:!!engine});
+    if(disposed)return;
+    scene=new StreetScene(modelCanvas,visualWindow,previousPlace,{frameElement:surface,engine});
+    await scene.ready;
+    if(disposed)return;
+    shutter=new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
+    sceneLoading=false;modelCanvas.dataset.sceneLoading='false';
+    transition.clear();syncControls();
+   };
    try{
-    candidate=new StreetScene(modelCanvas,visualWindow,destination,{frameElement:surface,engine});await candidate.ready;
-   }catch(error){candidate?.dispose({keepEngine:!!engine});previousScene.render?.();throw error;}
-   if(!passage.active||passage.version!==version){
-    candidate.dispose({keepEngine:!!engine});previousScene.canvas.dataset.performer=previousScene.dj?'dj':'none';previousScene.canvas.dataset.ready='true';previousScene.render?.();return;
+    candidate=new StreetScene(modelCanvas,visualWindow,destination,{frameElement:surface,engine});scene=candidate;await candidate.ready;
+   }catch(error){await restore();throw error;}
+   if(disposed){candidate.dispose({keepEngine:!!engine});return;}
+   if(!transition.active||transition.version!==version){
+    await restore();return;
    }
-   shutter.dispose();previousScene.dispose({keepEngine:!!engine});scene=candidate;
    chapterIndex=nextIndex;place=destination;
    surface.dataset.place=place.id;surface.setAttribute('aria-label',`${place.label}, lire ou mettre en pause le mix`);
    shutter=new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
+   sceneLoading=false;modelCanvas.dataset.sceneLoading='false';
    track.src=next.src;track.title=next.title||'MIX';track.duration=Number(next.duration)||0;track.file=null;
    visualTime=0;shapePhase=0;graphicsDirty=true;checkOutput=true;checkedWorld=null;
    prepareMixAudio(track.src,audio);syncControls();await scene.ready;if(place.model!=='groundfloor-apartment'&&!graphicsReady)prepareGraphics();
   },
-  onComplete:async()=>{setStatus('Le prochain lieu est prêt.');automaticStart=true;try{await startMix();}finally{automaticStart=false;}},
+  onComplete:async()=>{
+   transitionCancel.hidden=true;syncControls();
+   setStatus('Scène prête. Appuyez sur Play pour ouvrir le volet et lancer le mix.');
+  },
+  onCancel:()=>{transitionCancel.hidden=true;if(sceneLoading&&!disposed)document.querySelector('#scene-iris').hidden=false;},
   onError:error=>{console.error(error);setStatus('Le prochain lieu n’a pas pu être chargé. Vous pouvez relancer la lecture.',true);}
  });
- setStatus('Le chat vous accompagne vers le prochain lieu.');passage.start();
+ transitionCancel.hidden=false;
+ setStatus('Le chat vous accompagne vers le prochain lieu.');passage.start();syncControls();
 }
 
 async function loadFile(file) {
@@ -566,9 +693,9 @@ async function shareSite() {
   if(navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(url.href);
-      shareLabel.textContent='COPIÉ';shareButton.setAttribute('aria-label','Lien copié');
+      shareLabel.textContent='COPIÉ';shareButton.dataset.copied='true';shareButton.setAttribute('aria-label','Lien copié');
       setStatus('Lien du site copié.');
-      setTimeout(()=>{shareLabel.textContent='SHARE';shareButton.setAttribute('aria-label','Partager le site');},1800);
+      setTimeout(()=>{shareButton.dataset.copied='false';shareLabel.textContent='Partager';shareButton.setAttribute('aria-label','Partager le site');},1800);
       return;
     }catch { /* Try the native share sheet when clipboard access is denied. */ }
   }
@@ -627,21 +754,50 @@ function analyse(dt) {
 }
 
 surface.addEventListener('click',()=>{feedback.unlock();if(playing)pausePlayback();else resumePlayback();});
-for(const [button,kind] of [[mixButton,'lever'],[stopButton,'stop'],[pauseButton,'pause'],[playButton,'play'],[shareButton,'share']])button.addEventListener('click',()=>{feedback.play(kind);});
+for(const [button,kind] of [[mixButton,'lever'],[mix2Button,'lever'],[stopButton,'stop'],[shareButton,'share']])button.addEventListener('click',()=>{feedback.play(kind);});
 picker.addEventListener('change',()=>{loadFile(picker.files[0]);picker.value='';});
-playButton.addEventListener('click',resumePlayback);
-pauseButton.addEventListener('click',()=>{++inputGeneration;if(passage?.active||mode!=='idle'||mixStarting)pausePlayback();else{clockArmed=false;syncControls();}});
-stopButton.addEventListener('click',stopPlayback);
-shareButton.addEventListener('click',shareSite);
-mixButton.addEventListener('click',()=>{
-  if(mixStarting||(playing && mode==='file')){++inputGeneration;pausePlayback(true);}
-  else startMix();
+playButton.addEventListener('click',()=>{
+  feedback.play(playing||mixStarting?'pause':'play');
+  if(playing||mixStarting){++inputGeneration;pausePlayback();}else resumePlayback();
 });
+seekInput.addEventListener('input',()=>seekMix(Number(seekInput.value)));
+volumeInput.addEventListener('input',()=>setOutputVolume(Number(volumeInput.value)/100));
+muteButton.addEventListener('click',toggleMute);
+toolsToggle.addEventListener('click',()=>{
+  toolsMenu.hidden=!toolsMenu.hidden;toolsToggle.setAttribute('aria-expanded',String(!toolsMenu.hidden));
+});
+for(const [button,action] of [[fullscreenButton,toggleFullscreen],[document.querySelector('#local-file'),requestFile],[microphoneButton,()=>liveInput('microphone')],[tabAudioButton,()=>liveInput('screen')]]){
+  button.addEventListener('click',()=>{closeTools(true);action();});
+}
+microphoneButton.disabled=!navigator.mediaDevices?.getUserMedia;
+tabAudioButton.disabled=!navigator.mediaDevices?.getDisplayMedia;
+fullscreenButton.disabled=!document.querySelector('main').requestFullscreen;
+document.addEventListener('pointerdown',event=>{if(!event.target.closest('.utility-controls'))closeTools();});
+document.addEventListener('focusin',event=>{if(!event.target.closest('.utility-controls'))closeTools();});
+// Radio arrows select a fixed destination; Tab visits only the selected lever.
+for(const button of [mixButton,mix2Button])button.addEventListener('keydown',event=>{
+  if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return;
+  event.preventDefault();
+  const index=event.key==='Home'?0:event.key==='End'?1:button===mixButton?1:0;
+  const target=index===0?mixButton:mix2Button;target.focus();selectScene(index);
+});
+if(typeof ResizeObserver!=='undefined'){
+  const deckLayout=new ResizeObserver(()=>machine.style.setProperty('--deck-height',`${document.querySelector('.controls').getBoundingClientRect().height}px`));
+  deckLayout.observe(document.querySelector('.controls'));
+}
+syncOutput();
+stopButton.addEventListener('click',stopPlayback);
+transitionCancel.addEventListener('click',stopPlayback);
+shareButton.addEventListener('click',shareSite);
+mixButton.addEventListener('click',()=>selectScene(0));
+mix2Button.addEventListener('click',()=>selectScene(1));
 window.addEventListener('dragover',event=>{event.preventDefault();surface.classList.add('dragging');});
 window.addEventListener('dragleave',event=>{if(!event.relatedTarget)surface.classList.remove('dragging');});
 window.addEventListener('drop',event=>{event.preventDefault();surface.classList.remove('dragging');loadFile(event.dataTransfer.files[0]);});
 window.addEventListener('keydown',async event=>{
   if(event.ctrlKey||event.metaKey||event.altKey||event.repeat)return;
+  if(event.key==='Escape'){event.preventDefault();if(!toolsMenu.hidden)closeTools(true);else stopPlayback();return;}
+  if(event.target.closest('input,textarea,select,[contenteditable="true"]'))return;
   const key=event.key.toLowerCase();
   if(key===' '){
     if(passage?.active){event.preventDefault();if(passage.paused)passage.resume();else passage.pause();return;}
@@ -650,14 +806,18 @@ window.addEventListener('keydown',async event=>{
   }
   if(key==='m'){event.preventDefault();liveInput('microphone');}
   if(key==='s'){event.preventDefault();liveInput('screen');}
-  if(key==='f'){event.preventDefault();try{if(document.fullscreenElement)await document.exitFullscreen();else await document.querySelector('main').requestFullscreen();}catch{setStatus('Le plein écran n’est pas disponible dans ce navigateur.',true);}}
-  if(key==='escape')stopPlayback();
+  if(key==='f'){event.preventDefault();toggleFullscreen();}
 });
 
 let last=performance.now(),lastDraw=0,animationRequest=0;
 let graphicsReady=false,graphicsRestoreTimer=0,disposed=false;
 const renderQuality=1;
 let graphicsSeed,checkOutput=true,checkedWorld=null;
+function releaseGraphicsSurface(){
+ if(!graphicsReady)return;
+ universeRenderer.releaseSurface?.();
+ canvas.width=canvas.height=1;canvas.dataset.suspended='true';
+}
 function queueFrame() {
   if(!disposed&&!animationRequest)animationRequest=requestAnimationFrame(frame);
 }
@@ -717,6 +877,7 @@ function bindGraphicsContext(target) {
 function drawGraphics() {
   const size=Math.max(1,Math.ceil(canvas.clientWidth*Math.max(2,devicePixelRatio||1)));
   canvas.dataset.resolution=String(size);
+  canvas.dataset.suspended='false';
   if(canvas.width!==size||canvas.height!==size){canvas.width=size;canvas.height=size;if(gl)gl.viewport(0,0,size,size);}
   universeRenderer.resize(size);
   if(!visualPaused)universeRenderer.uploadSignal(waveform,spectrum,context?.sampleRate);
@@ -749,7 +910,14 @@ function drawGraphics() {
     gl.uniform3fv(locations['uPalette[0]'],palette);
     gl.drawArraysInstanced(gl.TRIANGLES,0,vertexCount,cells);
   }
-  universeRenderer.render(visualTime,[bass,mid,high],transients,universeFrom,universeTo,universeBlend);
+  // Round outwards with a two-pixel guard on each edge, so fractional CSS
+  // sizes and browser zoom never exclude a visible device pixel.
+  const canvasRect=canvas.getBoundingClientRect(),windowRect=visualWindow.getBoundingClientRect();
+  const pixelScale=size/canvasRect.height;
+  const bottom=Math.max(0,Math.floor((canvasRect.bottom-windowRect.bottom)*pixelScale)-2);
+  const top=Math.min(size,Math.ceil((canvasRect.bottom-windowRect.top)*pixelScale)+2);
+  const clip=top>bottom?{bottom,height:top-bottom}:null;
+  universeRenderer.render(visualTime,[bass,mid,high],transients,universeFrom,universeTo,universeBlend,clip);
   if(gl){
     const error=gl.getError();if(error)throw new Error(`WebGL draw error ${error}`);
     const world=universeBlend===1?universeTo:null;
@@ -760,6 +928,7 @@ function drawGraphics() {
     }
   }
   canvas.dataset.universe=universeNames[universeTo];
+  canvas.dataset.visibleRows=String(clip?.height??size);
   canvas.dataset.transition=universeBlend.toFixed(3);
   graphicsDirty=false;
 }
@@ -769,7 +938,7 @@ function frame(now) {
   if(document.hidden){last=now;return;}
   const dt=Math.min((now-last)/1000,.06);last=now;
   if(passage?.active){passage.tick(dt);return;}
-  scene.tick?.(dt,now,{playing:!visualPaused,bands:[bass,mid,high]});
+  if(sceneLoading)return;
   if(!visualPaused) {
     graphicsDirty=true;
     analyse(dt);
@@ -778,6 +947,7 @@ function frame(now) {
     advanceScene(dt*(reducedMotion.matches?.2:1));
     advanceUniverse(dt*(reducedMotion.matches?.2:1));
   }
+  scene.tick?.(dt,now,{playing:!visualPaused,active:mode!=='idle',bands:[bass,mid,high],transients});
   if(place.model==='groundfloor-apartment')return;
   if(!graphicsReady)return;
   if(gl?.isContextLost()){scheduleGraphicsRecovery();return;}
@@ -827,5 +997,5 @@ window.addEventListener('pageshow',wakeGraphics);
 window.addEventListener('pagehide',event=>{
   if(event.persisted)return;
   disposed=true;cancelAnimationFrame(animationRequest);clearTimeout(graphicsRestoreTimer);graphicsObserver?.disconnect();
-  ++inputGeneration;passage?.dispose();releaseSource();shutter.dispose();scene.dispose();feedback.dispose();mediaControls.dispose();context?.close();
+  ++inputGeneration;passage?.dispose();releaseSource();shutter?.dispose();scene.dispose?.();feedback.dispose();mediaControls.dispose();context?.close();
 });

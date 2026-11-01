@@ -32,9 +32,18 @@ export function rollerBuffer(context,direction=1){
 }
 export class MechanicalFeedback {
  constructor(Context=globalThis.AudioContext||globalThis.webkitAudioContext){
-  this.Context=Context;this.context=null;this.buffers=new Map();this.timer=0;this.motor=null;this.pendingDirection=0;this.serial=0;this.muted=false;this.disposed=false;this.motion={moving:false};
+  this.Context=Context;this.context=null;this.buffers=new Map();this.timer=0;this.motor=null;this.pendingDirection=0;this.serial=0;this.muted=false;this.disposed=false;this.motion={moving:false};this.volume=1;this.output=null;
  }
- audio(){this.context ||= new this.Context({latencyHint:'interactive'});return this.context;}
+ audio(){
+  if(!this.context){this.context=new this.Context({latencyHint:'interactive'});this.output=this.context.createGain();this.output.gain.value=this.volume;this.output.connect(this.context.destination);}
+  return this.context;
+ }
+ setVolume(value){
+  this.volume=Math.max(0,Math.min(1,value));
+  if(this.output)this.output.gain.setTargetAtTime(this.volume,this.context.currentTime,.01);
+  if(this.volume===0){this.serial++;this.pendingDirection=0;this.stopMotor(false);}
+  else if(this.motion.moving&&!this.muted)this.shutter(this.motion);
+ }
  idleSoon(){
   clearTimeout(this.timer);
   this.timer=setTimeout(()=>{this.timer=0;const ctx=this.context;if(!this.motor&&!this.pendingDirection&&ctx?.state==='running')ctx.suspend().catch(()=>{});},350);
@@ -44,17 +53,17 @@ export class MechanicalFeedback {
   try{clearTimeout(this.timer);await this.audio().resume();if(!this.disposed)this.idleSoon();}catch{}
  }
  async play(kind){
-  if(!this.Context||this.disposed)return;
+  if(!this.Context||this.disposed||this.volume===0)return;
   try{
    clearTimeout(this.timer);const ctx=this.audio();await ctx.resume();if(this.disposed)return;
    if(!this.buffers.has(kind))this.buffers.set(kind,mechanicalBuffer(ctx,kind));
-   const source=ctx.createBufferSource();source.buffer=this.buffers.get(kind);source.connect(ctx.destination);source.onended=()=>source.disconnect();source.start();this.idleSoon();
+   const source=ctx.createBufferSource();source.buffer=this.buffers.get(kind);source.connect(this.output);source.onended=()=>source.disconnect();source.start();this.idleSoon();
   }catch{/* A denied sound must never prevent a transport action. */}
  }
  shutter(motion){
   this.motion=motion;
   if(!this.Context||this.disposed)return;
-  if(!motion.moving||this.muted){this.serial++;this.pendingDirection=0;this.stopMotor(!this.muted&&(motion.progress===0||motion.progress===1));return;}
+  if(!motion.moving||this.muted||this.volume===0){this.serial++;this.pendingDirection=0;this.stopMotor(!this.muted&&this.volume>0&&(motion.progress===0||motion.progress===1));return;}
   const direction=motion.direction>0?1:-1;
   if(this.motor?.direction===direction){this.motor.gain.gain.setTargetAtTime(this.motorLevel(),this.context.currentTime,.045);return;}
   if(this.pendingDirection===direction)return;
@@ -64,12 +73,12 @@ export class MechanicalFeedback {
  motorLevel(){return (this.motion.direction>0 ? .2 : .17)*(.55+.45*Math.sin(Math.PI*Math.max(0,Math.min(1,this.motion.progress||0))));}
  async startMotor(direction,ticket){
   clearTimeout(this.timer);const ctx=this.audio();await ctx.resume();
-  if(this.disposed||this.muted||ticket!==this.serial||!this.motion.moving){if(!this.disposed)this.idleSoon();return;}
+  if(this.disposed||this.muted||this.volume===0||ticket!==this.serial||!this.motion.moving){if(!this.disposed)this.idleSoon();return;}
   const key=direction>0?'roller-up':'roller-down';
   if(!this.buffers.has(key))this.buffers.set(key,rollerBuffer(ctx,direction));
   this.stopMotor(false);clearTimeout(this.timer);
   const source=ctx.createBufferSource(),gain=ctx.createGain();source.buffer=this.buffers.get(key);source.loop=true;gain.gain.value=0;
-  source.connect(gain);gain.connect(ctx.destination);gain.gain.setTargetAtTime(this.motorLevel(),ctx.currentTime,.035);
+  source.connect(gain);gain.connect(this.output);gain.gain.setTargetAtTime(this.motorLevel(),ctx.currentTime,.035);
   source.onended=()=>{source.disconnect();gain.disconnect();};source.start();this.motor={source,gain,direction};this.pendingDirection=0;
  }
  stopMotor(latch=false){
@@ -77,7 +86,7 @@ export class MechanicalFeedback {
   if(motor&&ctx){
    try{motor.gain.gain.cancelScheduledValues(ctx.currentTime);motor.gain.gain.setTargetAtTime(0,ctx.currentTime,.018);motor.source.stop(ctx.currentTime+.075);}catch{}
    if(latch&&!this.disposed){
-    try{if(!this.buffers.has('stop'))this.buffers.set('stop',mechanicalBuffer(ctx,'stop'));const end=ctx.createBufferSource(),gain=ctx.createGain();gain.gain.value=.18;end.buffer=this.buffers.get('stop');end.connect(gain);gain.connect(ctx.destination);end.onended=()=>{end.disconnect();gain.disconnect();};end.start(ctx.currentTime+.025);}catch{}
+    try{if(!this.buffers.has('stop'))this.buffers.set('stop',mechanicalBuffer(ctx,'stop'));const end=ctx.createBufferSource(),gain=ctx.createGain();gain.gain.value=.18;end.buffer=this.buffers.get('stop');end.connect(gain);gain.connect(this.output);end.onended=()=>{end.disconnect();gain.disconnect();};end.start(ctx.currentTime+.025);}catch{}
    }
   }
   if(!this.disposed)this.idleSoon();

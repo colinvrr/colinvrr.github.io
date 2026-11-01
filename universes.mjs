@@ -424,7 +424,9 @@ export class UniverseRenderer {
   }
   resize(size) {
     if(this.size===size)return;this.size=size;
-    const gl=this.gl;gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.surface);
+    const gl=this.gl;gl.activeTexture(gl.TEXTURE0);
+    if(!this.surface){this.surface=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,this.surface);this.configureTexture();this.buffer=gl.createFramebuffer();this.depth=gl.createRenderbuffer();}
+    gl.bindTexture(gl.TEXTURE_2D,this.surface);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,size,size,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
     gl.bindRenderbuffer(gl.RENDERBUFFER,this.depth);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,size,size);
     gl.bindFramebuffer(gl.FRAMEBUFFER,this.buffer);
@@ -432,6 +434,13 @@ export class UniverseRenderer {
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,this.depth);
     if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw new Error('Audiovisual framebuffer unavailable');
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  }
+  releaseSurface(){
+    const gl=this.gl;
+    if(this.surface)gl.deleteTexture(this.surface);
+    if(this.depth)gl.deleteRenderbuffer(this.depth);
+    if(this.buffer)gl.deleteFramebuffer(this.buffer);
+    this.surface=this.depth=this.buffer=null;this.size=0;
   }
   uploadSignal(waveform,spectrum,sampleRate) {
     let offset=0;
@@ -450,7 +459,7 @@ export class UniverseRenderer {
     gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,512,1,gl.RG,gl.UNSIGNED_BYTE,this.signal);gl.activeTexture(gl.TEXTURE0);
   }
   paletteFor(world,time) {return this.palettes.sample(world,time);}
-  render(time,bands,transients,from,to,blend) {
+  render(time,bands,transients,from,to,blend,clip=null) {
     const gl=this.gl,l=this.locations;
     const motionFrom=motionSignature(from,time,this.palettes.seed),motionTo=motionSignature(to,time,this.palettes.seed);
     if(from!==to&&blend<1){
@@ -477,6 +486,12 @@ export class UniverseRenderer {
     gl.uniform1f(l.uTime,time);gl.uniform3fv(l.uBands,bands);gl.uniform3fv(l.uTransients,transients);
     gl.uniform3fv(l['uPaletteFrom[0]'],this.paletteFor(from,time));gl.uniform3fv(l['uPaletteTo[0]'],this.paletteFor(to,time));gl.uniform4fv(l.uFlow,this.flow);
     gl.uniform3f(l.uWorlds,from,to,blend);gl.uniform2f(l.uResolution,this.size,this.size);
-    gl.drawArrays(gl.TRIANGLES,0,3);
+    // The garage masks the top and bottom of the square canvas. Keep the
+    // original pixel grid, UVs, relief atlas and complete cellular input, but
+    // avoid raymarching fragments that CSS can never display. Standalone QA
+    // and callers without a clip continue to render the entire square.
+    if(clip){gl.enable(gl.SCISSOR_TEST);gl.scissor(0,clip.bottom,this.size,clip.height);}
+    try{gl.drawArrays(gl.TRIANGLES,0,3);}
+    finally{if(clip)gl.disable(gl.SCISSOR_TEST);}
   }
 }

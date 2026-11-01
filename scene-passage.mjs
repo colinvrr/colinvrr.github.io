@@ -9,8 +9,8 @@ export function passagePose(x,z,time,{walk=1,sit=0,sleep=0,yaw=1.25,seed=1,gait=
 // Driven by the application's existing visible-frame clock. No private timer
 // or RAF can continue the story behind a hidden tab or after cancellation.
 export class CatPassage {
- constructor({getScene,machine,mask,reduced=()=>false,visible=()=>true,onSwap,onComplete,onError=()=>{}}){
-  Object.assign(this,{getScene,machine,mask,reduced,visible,onSwap,onComplete,onError});this.active=false;this.version=0;
+ constructor({getScene,machine,mask,reduced=()=>false,visible=()=>true,onSwap,onComplete,onError=()=>{},onCancel=()=>{}}){
+  Object.assign(this,{getScene,machine,mask,reduced,visible,onSwap,onComplete,onError,onCancel});this.active=false;this.version=0;
   this.onClick=()=>this.skip();mask?.addEventListener?.('click',this.onClick);
  }
  start(){
@@ -81,6 +81,6 @@ export class CatPassage {
   if(!this.active)return;
   this.getScene().settleCat?.(500,80);this.active=false;this.clear();this.onComplete();
  }
- cancel(){if(!this.active)return;this.version++;this.active=false;this.getScene().settleCat?.(this.getScene().cat?.state?.x||95,80);this.clear();}
+ cancel(){if(!this.active)return;this.version++;this.active=false;this.getScene().settleCat?.(this.getScene().cat?.state?.x||95,80);this.clear();this.onCancel();}
  dispose(){this.cancel();this.mask?.removeEventListener?.('click',this.onClick);}
 }

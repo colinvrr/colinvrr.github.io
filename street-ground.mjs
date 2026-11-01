@@ -6,6 +6,19 @@ export function pavementY(z){return STREET.pavementY+STREET.fall*(z-STREET.facad
 export function roadY(z){return STREET.pavementY+STREET.fall+STREET.kerbHeight+(z-STREET.kerbZ-STREET.kerbWidth)*.008;}
 
 export function streetQuad(x,width,z0,z1,height){return [[x,height(z0),z0],[x+width,height(z0),z0],[x,height(z1),z1],[x+width,height(z1),z1]];}
+// Long bays run along the kerb, with a short depth across the road. The gap
+// between the two groups keeps the central shutter's access clear.
+export function parkingMarkings(){
+ const marks=[],inner=300,outer=520,line=8,length=520;
+ for(const [start,end]of [[-1380,180],[1060,2620]]){
+  for(let x=start;x<end;x+=90)marks.push({x,width:Math.min(54,end-x),z0:outer-line,z1:outer});
+  for(let x=start;x<=end;x+=length){
+   marks.push({x:x-line/2,width:line,z0:outer-54,z1:outer});
+   marks.push({x:x-line/2,width:line,z0:inner,z1:inner+28});
+  }
+ }
+ return marks;
+}
 function surface(scene,name,x,width,z0,z1,height,color,map,kind,tile=240){
  const points=streetQuad(x,width,z0,z1,height);
  // Separate top-face UVs use x/z, unlike vertical facade UVs. The asphalt
@@ -27,7 +40,7 @@ function graniteBlock(scene,x,width){
 }
 // All maps are generated once locally. Their tiled grain supplies the fine
 // detail without extra geometry or another animation loop.
-export function createRoadMaps(){
+export function createRoadMaps({city='PARIS'}={}){
  const size=512,make=draw=>{const c=document.createElement('canvas');c.width=c.height=size;draw(c.getContext('2d'));return {image:c};};
  let seed=93417;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
  const heights=new Float32Array(size*size);
@@ -39,7 +52,20 @@ export function createRoadMaps(){
    const grain=r>.94?19:r<.055?-23:0,value=111+cloud+n+grain;
    heights[i]=n*.7+grain;
    image.data[i*4]=value-3;image.data[i*4+1]=value;image.data[i*4+2]=value+3;image.data[i*4+3]=255;
-  }c.putImageData(image,0,0);
+  }
+  c.putImageData(image,0,0);
+  c.save();
+  c.strokeStyle='rgba(42,49,53,.28)';
+  c.lineWidth=1.2;
+  for(let y=-16;y<size+32;y+=28){c.beginPath();c.moveTo(0,y);c.lineTo(size,y+10);c.stroke();}
+  for(let row=0;row<20;row++){
+   const y=row*28-16,offset=row%2?18:0;
+   for(let x=offset-32;x<size+32;x+=56){c.beginPath();c.moveTo(x,y);c.lineTo(x+2,y+28);c.stroke();}
+  }
+  c.strokeStyle='rgba(205,209,204,.16)';
+  c.lineWidth=.7;
+  for(let y=0;y<size;y+=28){c.beginPath();c.moveTo(0,y+2);c.lineTo(size,y+12);c.stroke();}
+  c.restore();
  });
  const normal=make(c=>{
   const image=c.createImageData(size,size);
@@ -59,7 +85,7 @@ export function createRoadMaps(){
   for(let n=-360;n<=360;n+=27){c.strokeStyle='#343d43';c.lineWidth=5;c.beginPath();c.moveTo(n,-360);c.lineTo(n,360);c.stroke();c.beginPath();c.moveTo(-360,n);c.lineTo(360,n);c.stroke();c.strokeStyle='#a2aaac';c.lineWidth=1;c.beginPath();c.moveTo(n+4,-360);c.lineTo(n+4,360);c.stroke();c.beginPath();c.moveTo(-360,n+4);c.lineTo(360,n+4);c.stroke();}c.restore();
   for(const radius of [244,226,201]){c.strokeStyle=radius===226?'#343d43':'#a1aaac';c.lineWidth=radius===226?9:4;c.beginPath();c.arc(256,256,radius,0,Math.PI*2);c.stroke();}
   c.fillStyle='#657075';c.fillRect(153,202,206,110);c.strokeStyle='#a5adaf';c.lineWidth=3;c.strokeRect(153,202,206,110);
-  c.textAlign='center';c.textBaseline='middle';c.fillStyle='#c0c5c4';c.font='bold 23px sans-serif';c.fillText('VILLE DE',256,233);c.font='bold 37px sans-serif';c.fillText('PARIS',256,279);
+  c.textAlign='center';c.textBaseline='middle';c.fillStyle='#c0c5c4';c.font='bold 23px sans-serif';c.fillText(city==='BERLIN'?'STADT':'VILLE DE',256,233);c.font='bold 37px sans-serif';c.fillText(city,256,279);
   for(let i=0;i<6500;i++){c.fillStyle=random()>.5?'#d1d7d215':'#141d261c';c.fillRect(random()*size,random()*size,1+random()*2,1+random()*2);}
  });
  return {road,normal,paint,iron};
@@ -82,6 +108,13 @@ function circularCover(scene,x,z){
 export function buildStreetGround(scene){
  const x=-2500,width=6200,kerbFront=STREET.kerbZ+STREET.kerbWidth;
  surface(scene,'asphalt-pavement',x,width,STREET.wallZ,STREET.kerbZ,pavementY,'#d1d0c7',scene.maps.pavement.image,'asphalt');
+ if(scene.place?.theme==='berlin'){
+  // Berlin's large old paving slabs sit on the same continuous ground plane.
+  for(let row=0;row<3;row++)for(let col=0;col<77;col++){
+   const xx=x+col*82+(row%2)*41,z=STREET.wallZ+row*91+44;
+   scene.box(xx,pavementY(z)-.9,80.7,1.3,89.5,z,['#8b8983','#95918a','#85847e','#99958d'][(col*7+row)%4],scene.maps.stone.image,'road-granite',.3);
+  }
+ }
  surface(scene,'paris-asphalt',x,width,kerbFront,2700,roadY,'#a3b4b7',scene.maps.road.image,'road-asphalt',550);
  for(let xx=x;xx<x+width;xx+=132)graniteBlock(scene,xx,130.8);
  // Two courses of granite setts carry water alongside the kerb.
@@ -105,12 +138,10 @@ export function buildStreetGround(scene){
  const cx=835,z=59,top=pavementY(z)-.35;
  scene.box(cx,top,63,1.5,57,z,'#454e49',null,'iron',.8);scene.box(cx+3,top-.25,57,.5,51,z,'#58605a',null,'iron',.4);
  for(let i=0;i<8;i++)scene.tube([[cx+7,top-.7,z-21+i*6],[cx+55,top-.7,z-21+i*6]],'#6d746b',.35,'iron');
- // Interrupted white parking lines, with chips and aggregate showing through.
+ // Flat, worn paint outlines parallel parking alongside the kerb. No raised
+ // duplicate boxes: the marking shares the road's slope and perspective.
  const paintY=z=>roadY(z)-.42;
- for(const side of [350,880]){
-  for(let zz=1250;zz<1770;zz+=72)surface(scene,'worn-white-paint',side,9,zz,Math.min(zz+48,1770),paintY,'#f0f0e5',scene.maps.roadPaint.image,'road-paint',80);
-  surface(scene,'parking-corner',side===350?350:769,120,1242,1251,paintY,'#f0f0e5',scene.maps.roadPaint.image,'road-paint',80);
- }
+ for(const mark of parkingMarkings())surface(scene,'parallel-parking-paint',mark.x,mark.width,mark.z0,mark.z1,paintY,'#e3e2d7',scene.maps.roadPaint.image,'road-paint',80);
  // An irregular area of old granite paving remains around the service cover.
  // Shallow bevelled solids give the joints genuine relief in the foreground.
  const paving=['#56636a','#677178','#515f68','#606c73','#58676d','#657076'];
