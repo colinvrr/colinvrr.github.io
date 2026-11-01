@@ -1,3 +1,4 @@
+import {parisDanceArms} from './dance-performance.mjs';
 import {CAPTURE_DANCES, capturedDance, capturedWalk} from './resident-mocap.mjs';
 export {capturedWalk};
 // Deterministic, allocation-light limb solving in facade coordinates (y down).
@@ -69,8 +70,15 @@ export function poseTargets(s,side,frame){
   const i=side<0?0:1,shoulder=[side*34,77,0],rest=solveArm(shoulder,wrist,pole),upper=blendDirection(unit(sub(rest.elbow,shoulder)),unit(sub(f.poles[i],shoulder)),weight),lower=blendDirection(unit(sub(rest.wrist,rest.elbow)),unit(sub(f.arms[i],f.poles[i])),weight);
   pole=add(shoulder,mul(upper,44));wrist=add(pole,mul(lower,39));
  };
- if(d)captured(frame||danceFrame(s),d);
- if(!d&&walk&&/^(walk|leave|return)$/.test(s.phase))captured(frame||capturedWalk(s),walk);
+ if(d){
+  captured(frame||danceFrame(s),d);
+  if(s.parisDance){
+   const gesture=parisDanceArms(s.danceTime||0,side),weight=gesture.weight*d;
+   wrist=wrist.map((v,i)=>v+(gesture.wrist[i]-v)*weight);
+   pole=pole.map((v,i)=>v+(gesture.pole[i]-v)*weight);
+  }
+ }
+ if(!d&&walk&&/^(walk|leave|return|window-approach|window-depart)$/.test(s.phase))captured(frame||capturedWalk(s),walk);
  return {wrist,pole};
 }
 

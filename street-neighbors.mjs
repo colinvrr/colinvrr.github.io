@@ -1,5 +1,6 @@
 import { FACADES, centeredBays, framedBays } from './facade-layout.mjs';
-import {decorateShallowWindow} from './architectural-glass.mjs';
+import {buildNeighborInterior,neighborBacking} from './neighbor-interiors.mjs';
+import {pavementY,roadY} from './street-ground.mjs';
 // Two fully modelled neighbours. Each has an independent construction grammar:
 // brick voussoirs and steel joinery on the left, curved Art Deco bays on the right.
 const stoneColors=['#c6b99f','#d3c5aa','#cbbda2','#d6c9b1'];
@@ -16,8 +17,7 @@ function polygon(scene,points,depth,z,color,map,kind='stone'){
 function leftArch(scene,x,y,w,h){
  const r=w/2,cy=y+r,cx=x+r,stone=scene.maps.stone.image;
  const glass=[[x,y+h],[x+w,y+h],[x+w,cy]];for(let i=1;i<=32;i++){const a=i/32*Math.PI;glass.push([cx+Math.cos(a)*r,cy-Math.sin(a)*r]);}
- polygon(scene,glass,4,-55,'#20343d',null,'interior-recess');
- decorateShallowWindow(scene,x,y,w,h,-47,Math.round(x/200));
+ buildNeighborInterior(scene,{x,y,w,h},scene.neighborRoom++);
  polygon(scene,glass,7,-36,'#314349',null,'glass');
  for(let i=0;i<19;i++){
   const a=i/19*Math.PI+.012,b=(i+1)/19*Math.PI-.012,ra=r+18;
@@ -35,7 +35,7 @@ export function buildBrickNeighbor(scene){
  const {x,width:w}=FACADES.brick,random=()=>{let v=Math.sin(++scene.neighborSeed*78.233)*43758.5453;return v-Math.floor(v);};
  const colors=['#8e5541','#9a6048','#a56b51','#935a44','#ab7257','#86513f','#9d674e'];
  const bays=centeredBays(FACADES.brick,3,203).flatMap(xx=>[{x:xx,y:75,w:203,h:330},{x:xx,y:700,w:203,h:442}]);
- scene.box(x,0,w,1165,53,-89,'#776758',null,'stone');
+ neighborBacking(scene,x,w,bays,53,-89,'#776758');
  for(let row=0;row<58;row++){
   const yy=row*20.1;for(let col=0;col<22;col++){
    const xx=x+col*51+(row%2)*25.5;if(xx>=-45)continue;
@@ -70,8 +70,7 @@ function curvedBand(scene,x,y,w,h,projection,color,kind='stone'){
 }
 function bowWindow(scene,x,y,w,h){
  const color='#394e51',projection=69;
- scene.box(x,y,w,h,4,-47,'#263d45',null,'interior-recess',.2);
- decorateShallowWindow(scene,x,y,w,h,-37,Math.round(x/200)+1);
+ buildNeighborInterior(scene,{x,y,w,h},scene.neighborRoom++);
  curvedBand(scene,x,y,w,h,projection,color,'glass');
  for(const [yy,hh,c]of [[y-16,13,'#d1cfbe'],[y+h,15,'#c5c4b5'],[y+h+17,7,'#aeb3a5']])curvedBand(scene,x-8,yy,w+16,hh,76,c);
  for(const yy of [y+7,y+h*.47,y+h-7]){const line=[];for(let i=0;i<=40;i++){const u=i/40;line.push([x+w*u,yy,-19+Math.sin(u*Math.PI)*projection]);}scene.tube(line,'#a5b2a7',1.6,'steel');}
@@ -82,7 +81,8 @@ function bowWindow(scene,x,y,w,h){
 }
 export function buildDecoNeighbor(scene){
  const {x,width:w}=FACADES.deco,layout=framedBays(FACADES.deco,3,212,43);
- scene.box(x,0,w,1165,60,-81,'#c6c8bb',null,'stone',1.2);
+ const openings=layout.windows.flatMap(xx=>[{x:xx,y:64,w:212,h:308},{x:xx,y:706,w:212,h:429}]);
+ neighborBacking(scene,x,w,openings,60,-81,'#c6c8bb');
  // Stepped vertical piers and shallow flutes are architectural solids.
  for(const xx of layout.piers){
   scene.box(xx,0,43,1145,38,-31,'#d9d9c8',null,'stone',1.6);
@@ -101,4 +101,83 @@ export function buildDecoNeighbor(scene){
  // A stone plinth gives the two neighbours the same pavement datum.
  scene.box(x,1144,w,21,35,-25,'#a3aa9b',null,'stone',1);
 }
-export function buildNeighbors(scene){scene.neighborSeed=83;buildBrickNeighbor(scene);buildDecoNeighbor(scene);}
+async function buildParisStreetLamp(scene){
+ if(!scene.engine)return;
+ try{
+  const gltf=await fetch('./assets/street_lamp_01/street_lamp_01_1k.gltf').then(response=>{
+   if(!response.ok)throw Error(`Street lamp asset returned ${response.status}`);
+   return response.json();
+  });
+  const binary=await fetch('./assets/street_lamp_01/street_lamp_01.bin').then(response=>{
+   if(!response.ok)throw Error(`Street lamp buffer returned ${response.status}`);
+   return response.arrayBuffer();
+  });
+  const B=scene.api,baseX=1160,baseY=1160,baseZ=150,scale=150;
+  const componentSize={5123:2,5126:4};
+  const readAccessor=(accessorIndex)=>{
+   const accessor=gltf.accessors[accessorIndex],view=gltf.bufferViews[accessor.bufferView],size=componentSize[accessor.componentType];
+   if(!size||accessor.componentType!==5126&&accessor.componentType!==5123)throw Error(`Unsupported street lamp accessor ${accessorIndex}`);
+   const count=accessor.type==='VEC3'?3:accessor.type==='VEC2'?2:1,offset=(view.byteOffset||0)+(accessor.byteOffset||0),stride=view.byteStride||size*count,values=[];
+   const data=new DataView(binary,offset);
+   for(let i=0;i<accessor.count;i++)for(let component=0;component<count;component++){
+    const position=i*stride+component*size;
+    values.push(accessor.componentType===5126?data.getFloat32(position,true):data.getUint16(position,true));
+   }
+   return values;
+  };
+  for(const primitive of gltf.meshes[0].primitives){
+   const positions=readAccessor(primitive.attributes.POSITION),indices=readAccessor(primitive.indices),uv=primitive.attributes.TEXCOORD_0===undefined?[]:readAccessor(primitive.attributes.TEXCOORD_0);
+   for(let i=0;i<positions.length;i+=3){positions[i]=baseX+positions[i]*scale;positions[i+1]=baseY-positions[i+1]*scale;positions[i+2]=baseZ+positions[i+2]*scale;}
+   const data=new B.VertexData();data.positions=[];for(let i=0;i<positions.length;i+=3){const p=scene.vec(positions[i],positions[i+1],positions[i+2]);data.positions.push(p.x,p.y,p.z);}data.indices=indices;data.uvs=uv;data.normals=[];B.VertexData.ComputeNormals(data.positions,data.indices,data.normals);
+   const mesh=new B.Mesh(`polyhaven-street-lamp-${primitive.material??0}`,scene.scene);data.applyToMesh(mesh);
+   const kind=primitive.material===1?'interior-glass':primitive.material===2?'interior-glow':'iron',color=primitive.material===2?'#f4c778':primitive.material===1?'#8f9b91':'#252b2a';
+   scene.add(mesh,color,null,kind,true);
+   if(primitive.material===2)scene.parisLampBulb=mesh;
+  }
+  const projectionCanvas=document.createElement('canvas');projectionCanvas.width=256;projectionCanvas.height=512;
+  const projectionContext=projectionCanvas.getContext('2d'),projectionPixels=projectionContext.createImageData(256,512);
+  for(let y=0;y<512;y++)for(let x=0;x<256;x++){
+   const across=(x-127.5)/127.5,along=y/511;
+   const edge=Math.exp(-across*across*7.2);
+   const terminal=1-Math.min(1,Math.max(0,(along-.48)/.52));
+   const fade=Math.pow(1-along,1.8)*(.72+.28*Math.exp(-along*along*8))*terminal*terminal;
+   const alpha=Math.round(255*edge*fade);
+   const offset=(y*256+x)*4;projectionPixels.data[offset]=255;projectionPixels.data[offset+1]=220;projectionPixels.data[offset+2]=142;projectionPixels.data[offset+3]=alpha;
+  }
+  projectionContext.putImageData(projectionPixels,0,0);
+  const projectionMaterial=new B.StandardMaterial('paris-street-lamp-ground-glow',scene.scene);
+  projectionMaterial.diffuseColor=B.Color3.White();projectionMaterial.emissiveColor=new B.Color3(1,.82,.48);
+  projectionMaterial.diffuseTexture=scene.texture(projectionCanvas);projectionMaterial.diffuseTexture.hasAlpha=true;
+  projectionMaterial.useAlphaFromDiffuseTexture=true;projectionMaterial.transparencyMode=B.StandardMaterial.MATERIAL_ALPHABLEND;
+  projectionMaterial.specularColor=B.Color3.Black();projectionMaterial.disableLighting=true;projectionMaterial.backFaceCulling=false;
+  projectionMaterial.disableDepthWrite=true;projectionMaterial.alpha=.72;projectionMaterial.zOffset=-20;
+  const rows=24,columns=10,zStart=baseZ+48,zEnd=baseZ+1500,positions=[],uv=[],indices=[];
+  for(let row=0;row<=rows;row++){
+   const t=row/rows,z=zStart+(zEnd-zStart)*t,width=84+(300*t),surfaceY=z<=225?pavementY(z):roadY(z),y=surfaceY-1.2;
+   for(let column=0;column<=columns;column++){const u=column/columns,p=scene.vec(baseX-width/2+width*u,y,z);positions.push(p.x,p.y,p.z);uv.push(u,t);}
+  }
+  for(let row=0;row<rows;row++)for(let column=0;column<columns;column++){const a=row*(columns+1)+column,b=a+1,c=a+columns+1,d=c+1;indices.push(a,c,b,b,c,d);}
+  const projectionData=new B.VertexData();projectionData.positions=positions;projectionData.indices=indices;projectionData.uvs=uv;projectionData.normals=[];B.VertexData.ComputeNormals(positions,indices,projectionData.normals);
+  const projection=new B.Mesh('paris-street-lamp-ground-light-trail',scene.scene);projectionData.applyToMesh(projection);
+  projection.material=projectionMaterial;projection.isPickable=false;scene.parisLampProjection=projection;scene.parisLampProjectionMaterial=projectionMaterial;
+  const beam=B.MeshBuilder.CreateCylinder('paris-street-lamp-light-cone',{height:560,diameterTop:18,diameterBottom:142,tessellation:20,sideOrientation:B.Mesh.DOUBLESIDE},scene.scene);
+  beam.position=scene.vec(baseX,baseY-300,baseZ+35);
+  const beamMaterial=projectionMaterial.clone('paris-street-lamp-light-beam-material');
+  beamMaterial.alpha=.015;
+  beamMaterial.zOffset=-18;
+  beam.material=beamMaterial;
+  beam.isPickable=false;
+  scene.parisLampBeam=beam;
+  scene.parisLampBeamMaterial=beamMaterial;
+  const haloMaterial=new B.StandardMaterial('paris-street-lamp-halo',scene.scene);
+  haloMaterial.diffuseColor=new B.Color3(1,.55,.16);haloMaterial.emissiveColor=new B.Color3(1,.38,.08);
+  haloMaterial.alpha=.02;haloMaterial.disableLighting=true;haloMaterial.disableDepthWrite=true;
+  haloMaterial.transparencyMode=B.StandardMaterial.MATERIAL_ALPHABLEND;
+  const halo=B.MeshBuilder.CreateSphere('paris-street-lamp-halo',{diameter:92,segments:16},scene.scene);
+  halo.position=scene.vec(baseX,baseY-485,baseZ+10);halo.material=haloMaterial;halo.isPickable=false;
+  scene.parisLampHalo=halo;scene.parisLampHaloMaterial=haloMaterial;
+  const lamp=new B.HemisphericLight('paris-street-lamp-light',new B.Vector3(0,-1,0),scene.scene);scene.parisLampLight=lamp;
+  lamp.diffuse=new B.Color3(1,.72,.4);lamp.groundColor=new B.Color3(.12,.07,.03);lamp.intensity=.16;
+ }catch(error){console.error('Paris street lamp asset failed to load',error);}
+}
+export function buildNeighbors(scene){scene.neighborSeed=83;scene.neighborRoom=0;buildBrickNeighbor(scene);buildDecoNeighbor(scene);buildParisStreetLamp(scene);}

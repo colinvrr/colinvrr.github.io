@@ -1,3 +1,4 @@
+import {buildNeighborInterior} from './neighbor-interiors.mjs';
 // Berlin-inspired industrial courtyard. All masonry, steelwork and windows
 // are geometry; signs and wear are small locally drawn material maps.
 const BRICK=['#73564b','#80604f','#674f46','#89654f','#775b4d','#916d56'];
@@ -26,7 +27,8 @@ function wall(s,x,y,w,h,holes=[],brick=true){
  }
 }
 function factoryWindow(s,x,y,w,h,columns=4,rows=3,reactive=false){
- s.box(x,y,w,h,10,-100,'#202d34',null,'iron',.7);
+ if(reactive)s.box(x,y,w,h,10,-100,'#202d34',null,'iron',.7);
+ else buildNeighborInterior(s,{x,y,w,h},s.neighborRoom++,{berlin:true});
  s.frame(x-8,y-8,w+16,h+16,-26,9,'#30363f',s.maps.steel.image,'steel');
  const cw=w/columns,rh=h/rows;
  for(let c=0;c<columns;c++)for(let r=0;r<rows;r++){
@@ -35,6 +37,16 @@ function factoryWindow(s,x,y,w,h,columns=4,rows=3,reactive=false){
   if(reactive&&s.engine){
    const pane=s.staticMeshes.at(-1),material=pane.material.clone(`techno-window-${c}-${r}`);material.emissiveColor=new s.api.Color3(0,0,0);pane.material=material;
    (s.windowPanes??=[]).push({material,column:c,row:r});
+  }
+  if(reactive){
+   // A three-dimensional light fixture sits behind each transparent pane.
+   s.box(px+8,py+rh*.30,cw-26,rh*.32,8,-84,'#202c31',null,'interior-dark',.3);
+   s.box(px+13,py+rh*.42,cw-36,Math.max(5,rh*.08),5,-77,'#78a8ae',null,'studio-neon',.2);
+   if(s.engine){
+    const bar=s.staticMeshes.at(-1),material=bar.material.clone(`techno-fixture-${c}-${r}`);
+    material.emissiveColor=new s.api.Color3(0,0,0);bar.material=material;
+    (s.windowPanes??=[]).push({material,column:c,row:r,fixture:true});
+   }
   }
   s.box(px+4,py+5,2,rh-21,1,-37,'#7e9298',null,'steel',.1);
  }
@@ -61,7 +73,23 @@ function pipe(s,x){
  s.tube([[x,0,-4],[x,466,-4],[x+12,500,4],[x+12,1150,4]],'#485456',4.5,'iron');
  for(const y of [132,411,736,1060])s.box(x-8,y,26,6,11,6,'#697271',null,'steel',.6);
 }
+function berlinStreetFurniture(s){
+ // Slender Berlin courtyard lamp, with a visible emitter and real point light.
+ const steel='#3b474b',dark='#202b30';
+ s.tube([[1080,760,72],[1080,1160,72]],steel,7,'steel');
+ s.tube([[1080,774,72],[1031,774,72],[1015,792,72]],steel,5,'steel');
+ s.box(1008,792,34,12,22,72,dark,null,'steel',1);
+ s.box(1013,797,24,4,12,72,'#b7ff9a',null,'interior-glow',1);
+ if(s.engine){
+  const B=s.api,bulb=B.MeshBuilder.CreateSphere('berlin-street-lamp-bulb',{diameter:18,segments:12},s.scene);
+  bulb.position=s.vec(1018,803,72);s.add(bulb,'#b7ff9a',null,'interior-glow',false);
+  const light=new B.HemisphericLight('berlin-street-lamp-light',new B.Vector3(0,-1,0),s.scene);s.berlinLampLight=light;s.berlinLampBulb=bulb;
+  light.diffuse=new B.Color3(.55,1,.42);light.groundColor=new B.Color3(.04,.08,.04);light.intensity=.14;light.includedOnlyMeshes=[bulb];
+  }
+  s.box(1072,1156,17,8,17,72,dark,null,'steel',1);
+}
 export function buildBerlinNeighbors(s){
+ s.neighborRoom=0;
  const leftWindows=[[-1190,70,355,345],[-720,70,355,345],[-1190,690,355,435],[-720,690,355,435]];
  wall(s,-1350,0,1305,1165,leftWindows,false);
  for(const p of leftWindows)factoryWindow(s,...p,4,4);
@@ -101,5 +129,6 @@ export function buildBerlinFacade(s){
   const x=-28+i*28; s.box(x,y+3+(i*7)%18,8+(i*13)%23,2+(i%3),.5,11,i%3?'#42434a':'#85776b',null,'stone',.1);
  }
  for(const x of [-45,199,1049])for(let i=0;i<19;i++)s.box(x+4+(i*9)%17,33+i*59,8+(i%3)*3,12+(i*7)%31,.5,7,i%2?'#5b5c59':'#666360',null,'stone',.1);
+ berlinStreetFurniture(s);
  s.canvas.dataset.architecture='berlin-industrial';
 }

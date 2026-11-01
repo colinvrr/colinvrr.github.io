@@ -6,7 +6,7 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 main { height: 100svh; min-height: 100%; display: block; padding: 0; }
 .machine { position: relative; isolation: isolate; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; align-items: center; }
 #surface {
-  position: relative; display: block; width: 100%; height: min(82svh, calc(100svh - var(--deck-height, 210px) - 24px - env(safe-area-inset-bottom, 0px))); flex: none;
+  position: relative; display: block; width: 100%; height: min(72svh, calc(100svh - var(--deck-height, 210px) - 52px - env(safe-area-inset-bottom, 0px))); flex: none;
   padding: 0; overflow: hidden; border: 0; border-radius: 0;
   background: #858585; cursor: pointer; appearance: none;
   outline: none; isolation: isolate;
@@ -73,6 +73,9 @@ canvas { display: block; }
 .volume-fader { flex: 1; min-width: 0; }
 .volume-fader label { display: flex; justify-content: space-between; gap: 4px; font-size: 9px; line-height: 14px; }
 .volume-fader .range { margin: -3px 0 -7px; }
+.day-night-fader { width: 76px; min-width: 76px; }
+.day-night-fader label { display: flex; justify-content: space-between; gap: 3px; font-size: 8px; line-height: 14px; }
+.day-night-fader .range { height: 28px; margin: -1px 0 -4px; }
 .quiet-button { display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; padding: 11px; border: 0; border-radius: 2px; background: transparent; color: #263622; cursor: pointer; }
 .quiet-button svg { display: block; width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 #mute svg path:first-child { fill: currentColor; stroke: none; }
@@ -93,7 +96,7 @@ canvas { display: block; }
   .track-details { grid-column: 1 / -1; }
   .track-meta { font-size: 10px; }
   #mix-title { font-size: 11px; }
-  .volume-controls { max-width: 210px; }
+  .volume-controls { max-width: 280px; }
   .utility-controls { justify-self: end; }
   .volume-fader label { font-size: 10px; }
 }
@@ -114,7 +117,7 @@ canvas { display: block; }
   .mix-controls,.transport { grid-row: 1 / 3; }
   .track-details { grid-column: 3; grid-row: 1; }
   #mix-title { font-size: 10px; line-height: 13px; }#mix-time { font-size: 11px; }.track-meta { flex-wrap: wrap; gap: 0 6px; }
-  .volume-controls { grid-column: 3; grid-row: 2; max-width: 160px; margin-top: -6px; }.volume-fader label { display: none; }.volume-fader .range { margin: 0; }
+  .volume-controls { grid-column: 3; grid-row: 2; max-width: 220px; margin-top: -6px; }.volume-fader label,.day-night-fader label { display: none; }.volume-fader .range,.day-night-fader .range { margin: 0; }
   .utility-controls { grid-column: 4; grid-row: 1 / 3; flex-direction: column; }
   .tools-menu { bottom: 0; right: 50px; }
 }
@@ -139,7 +142,7 @@ html[data-loading="true"] .machine > .model-canvas, html[data-loading="true"] #s
 .scene-iris[hidden] { display: none; }
 .scene-iris::after { content: ''; position: absolute; left: var(--iris-x); top: var(--iris-y); width: calc(var(--iris-radius) * 2); height: calc(var(--iris-radius) * 2); transform: translate(-50%, -50%); border: 1px solid #dedcc580; border-radius: 50%; pointer-events: none; }
 .scene-iris:focus-visible { outline: 1px solid #dedcc5; outline-offset: -5px; }
-.machine[data-travelling="true"] .controls, .machine[data-travelling="true"] .visual-window { visibility: hidden; }
+.machine[data-travelling="true"] .controls { visibility: hidden; }
 #surface[data-place="paris-apartment"] .visual-window { visibility: hidden; }
 
 .transition-cancel { position:fixed; z-index:81; bottom:max(12px,env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%); min-height:44px; width:max-content; max-width:calc(100% - 24px); padding:10px 16px; border:1px solid #a3ad97; border-radius:2px; background:#333f33; color:#e0e5d3; font:12px/1.4 ui-monospace,monospace; cursor:pointer; }
@@ -147,7 +150,7 @@ html[data-loading="true"] .machine > .model-canvas, html[data-loading="true"] #s
 
 #share { position:relative; }
 #share[data-copied="true"] #share-label { position:absolute; width:max-content; height:auto; margin:0; padding:4px 6px; bottom:100%; right:0; overflow:visible; clip:auto; border:1px solid #a3ad97; border-radius:2px; background:#333f33; color:#e0e5d3; font:10px/1.4 ui-monospace,monospace; }
-/* Keep the left entrance and its dancer beside the garage in portrait views. */
+/* Keep the left entrance and its dancer beside the garage in portrait views, with ample pavement. */
 @media (max-width: 760px) and (max-aspect-ratio: 1/1) {
-  #surface[data-place="paris-phone"], #surface[data-place="paris-apartment"] { height: min(82svh, calc(100svh - var(--deck-height, 210px) - 24px - env(safe-area-inset-bottom, 0px)), calc(100vw * .96)); }
+  #surface[data-place="paris-phone"], #surface[data-place="paris-apartment"] { height: min(68svh, calc(100svh - var(--deck-height, 210px) - 40px - env(safe-area-inset-bottom, 0px)), calc(100vw * .88)); }
 }

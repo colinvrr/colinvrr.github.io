@@ -1,27 +1,41 @@
 import {pavementY} from './street-ground.mjs';
+import {DANCE_STYLES,danceFrame} from './resident-motion.mjs';
+import {catDanceMotion} from './dance-performance.mjs';
 const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
 const ease=t=>{t=clamp(t);return t*t*t*(t*(t*6-15)+10);};
 const lerp=(a,b,t)=>a+(b-a)*t;
 // All decisions are made once at the beginning of a visit. Sampling a pose is
 // pure: redraws, resizing and a frozen frame cannot reroll the cat's behaviour.
 export class CatTimeline {
- constructor({random=Math.random,firstDelay}={}){this.random=random;this.time=0;this.visit=null;this.nextAt=firstDelay??this.range(4,8);this.lastDirection=0;this.visits=0;}
+ constructor({random=Math.random,firstDelay,berlin=false}={}){this.berlin=berlin;this.random=random;this.time=0;this.visit=null;this.nextAt=firstDelay??this.range(4,8);this.lastDirection=0;this.visits=0;}
  range(a,b){return a+(b-a)*this.random();}
  begin(bounds,options={}){
-  const direction=this.lastDirection&&this.random()<.65?-this.lastDirection:this.random()<.5?1:-1;
-  this.lastDirection=direction;const stop=this.range(77,119),z=this.range(64,96),speed=this.range(82,112);
-  const start=direction>0?bounds.left:bounds.right,exitDirection=this.random()<.32?-direction:direction,end=exitDirection>0?bounds.right:bounds.left;
-  const rest=options.rest??(this.random()<.42?'sleep':'sit'),hops=options.jump??this.random()<.55;
+  if(this.berlin)return this.beginBerlin(bounds);
+  const direction=-1,exitDirection=1;
+  this.lastDirection=direction;const stop=this.range(990,1020),z=this.range(64,96),speed=this.range(82,112);
+  const start=Math.max(bounds.right,stop+80),end=start;
+  const rest=options.rest??'dance',hops=options.jump??this.random()<.55;
   const approach=stop-direction*(hops?this.range(45,68):0),incoming=Math.abs(approach-start)/speed,outgoing=Math.abs(end-stop)/speed,sit=.95,rise=.85;
   const v={startAt:this.time,direction,exitDirection,start,end,stop,z,incoming,outgoing,sit,rise,rest,hops,approach,dwell:rest==='sleep'?this.range(56,64):this.range(5,13),jumpHeight:this.range(43,65),seed:this.range(0,Math.PI*2),phases:[]};
   let at=0;const add=(kind,duration,extra={})=>{v.phases.push({kind,at,duration,...extra});at+=duration;};
   add('arrive',incoming,{from:start,to:approach,direction});
   if(hops)add('jump',1.25,{from:approach,to:stop,direction});
   add('settle',sit);
-  if(rest==='sleep'){add('sit',this.range(2,4));add('lie',1.8);add('sleep',v.dwell);add('wake',1.8);add('sit',2);}
+  if(rest==='dance'){v.danceOrder=[...DANCE_STYLES].sort(()=>this.random()-.5);add('dance-rise',1.1);add('dance',this.range(60,85));add('dance-lower',1.1);}
+  else if(rest==='sleep'){add('sit',this.range(2,4));add('lie',1.8);add('sleep',v.dwell);add('wake',1.8);add('sit',2);}
   else add('sit',v.dwell);
   add('stand',rise);add('leave',outgoing,{from:stop,to:end,direction:exitDirection});v.duration=at;
   v.blinks=[];for(let t=this.range(1.8,3.5);t<v.duration;t+=this.range(2.9,5.3))v.blinks.push(t);
+  this.visit=v;this.visits++;
+ }
+ beginBerlin(bounds){
+  const stop=1100,z=82,start=Math.max(bounds.right,stop+80),speed=this.range(82,112);
+  const v={startAt:this.time,stop,z,start,end:start,direction:-1,exitDirection:1,seed:this.range(0,Math.PI*2),blinks:[],phases:[],danceOrder:[...DANCE_STYLES].sort(()=>this.random()-.5)};
+  let at=0;const add=(kind,duration,extra={})=>{v.phases.push({kind,at,duration,...extra});at+=duration;};
+  add('arrive',(start-stop)/speed,{from:start,to:stop,direction:-1});
+  add('settle',.95);add('dance-rise',1.1);add('dance',this.range(60,85));add('dance-lower',1.1);add('stand',.85);
+  add('leave',(start-stop)/speed,{from:stop,to:start,direction:1});v.duration=at;
+  for(let t=this.range(1.8,3.5);t<v.duration;t+=this.range(2.9,5.3))v.blinks.push(t);
   this.visit=v;this.visits++;
  }
  advance(dt,bounds){
@@ -32,7 +46,7 @@ export class CatTimeline {
  sample(reduced=false){
   const v=this.visit;if(!v)return {visible:false,phase:'absent'};
   const t=Math.max(0,this.time-v.startAt),segment=v.phases.find(p=>t<p.at+p.duration)||v.phases.at(-1),local=t-segment.at,p=clamp(local/segment.duration),e=ease(p),phase=segment.kind;
-  let x=v.stop,sit=0,sleep=0,yaw=0,gait=0,walk=0,jump=0,crouch=0,tuck=0,pitch=0;
+  let x=v.stop,sit=0,sleep=0,yaw=0,gait=0,walk=0,jump=0,crouch=0,tuck=0,pitch=0,upright=0,danceTime=0,danceDuration=0,danceStyle=DANCE_STYLES[0],danceNext=danceStyle,danceBlend=0;
   if(phase==='arrive'||phase==='leave'){
    x=lerp(segment.from,segment.to,e);const distance=Math.abs(segment.to-segment.from);gait=Math.abs(x-segment.from)*.18;
    walk=clamp(30*p*p*(1-p)*(1-p)*distance/segment.duration/85);yaw=segment.direction*1.25;
@@ -43,21 +57,24 @@ export class CatTimeline {
    else crouch=Math.sin(clamp((local-1)/.25)*Math.PI)*.65;
   }else if(phase==='settle'){sit=e;yaw=v.direction*1.25*(1-e);}
   else if(phase==='sit'){sit=1;yaw=Math.sin(t*.3+v.seed)*.09*ease(local/.4)*ease((segment.duration-local)/.4);}
+  else if(phase==='dance-rise'){sit=1-e;upright=e;}
+  else if(phase==='dance'){upright=1;danceTime=local;danceDuration=segment.duration;const period=8,slot=Math.floor(local/period),within=local-slot*period;danceStyle=v.danceOrder[slot%v.danceOrder.length];danceNext=v.danceOrder[(slot+1)%v.danceOrder.length];danceBlend=ease((within-6.5)/1.5);}
+  else if(phase==='dance-lower'){sit=e;upright=1-e;}
   else if(phase==='lie'){sleep=e;sit=1-e;yaw=sleep*.4;}
   else if(phase==='sleep'){sleep=1;yaw=.4;}
   else if(phase==='wake'){sleep=1-e;sit=e;yaw=sleep*.4;}
   else if(phase==='stand'){sit=1-e;yaw=v.exitDirection*1.25*e;}
   let blink=1;for(const at of v.blinks)blink=Math.min(blink,1-.96*Math.exp(-(((t-at)/.07)**2)));
   if(sleep>.5)blink=0;
-  if(reduced){x=v.stop;sit=sleep>.5?0:1;yaw=sleep*.4;gait=0;walk=0;jump=0;crouch=0;tuck=0;pitch=0;}
+  if(reduced){x=v.stop;const dancing=this.berlin||v.rest==='dance';sit=dancing?0:sleep>.5?0:1;upright=dancing?1:0;yaw=sleep*.4;gait=0;walk=0;jump=0;crouch=0;tuck=0;pitch=0;}
   const groundY=pavementY(v.z);
-  return {visible:t<v.duration,phase,x,z:v.z,y:groundY-jump,groundY,sit,sleep,jump,crouch,tuck,pitch,yaw,gait,walk,blink,t,seed:v.seed};
+  return {visible:t<v.duration,phase,x,z:v.z,y:groundY-jump,groundY,sit,sleep,jump,crouch,tuck,pitch,yaw,gait,walk,blink,t,seed:v.seed,upright,danceTime,danceDuration,danceStyle,danceNext,danceBlend};
  }
 }
 
 export class StreetCat {
  constructor(scene,options={}){
-  this.owner=scene;this.B=scene.api;this.timeline=new CatTimeline(options);this.reduced=matchMedia('(prefers-reduced-motion: reduce)');this.state=this.timeline.sample();this.meshes=[];this.materials=[];this.legs=[];
+  this.owner=scene;this.B=scene.api;this.timeline=new CatTimeline({berlin:scene.place?.theme==='berlin',...options});this.reduced=matchMedia('(prefers-reduced-motion: reduce)');this.state=this.timeline.sample();this.meshes=[];this.materials=[];this.legs=[];
   if(scene.engine)this.build();
  }
  material(name,color,emission=0){const B=this.B,m=new B.StandardMaterial(name,this.owner.scene);m.diffuseColor=B.Color3.FromHexString(color);m.emissiveColor=m.diffuseColor.scale(emission);m.specularColor=new B.Color3(.06,.06,.06);m.specularPower=24;m.ambientColor=new B.Color3(.6,.6,.6);this.materials.push(m);return m;}
@@ -129,7 +146,7 @@ export class StreetCat {
  advance(dt){
   const width=this.owner.viewWidth||1950,previous=this.state.visible;
   this.timeline.advance(dt,{left:620-width/2-130,right:620+width/2+130});this.state=this.timeline.sample(this.reduced.matches);
-  this.owner.canvas.dataset.catState=this.state.phase;
+  this.owner.canvas.dataset.catState=this.state.phase;this.owner.canvas.dataset.catDance=this.state.phase==='dance'?this.state.danceStyle:'';
   return previous!==this.state.visible;
  }
  apply(){
@@ -137,17 +154,35 @@ export class StreetCat {
   this.root.setEnabled(s.visible);this.shadow.setEnabled(s.visible);if(!s.visible)return;
   this.root.position.copyFrom(this.owner.vec(s.x,s.y,s.z));this.root.rotation.y=s.yaw;
   const sleep=s.sleep||0,bob=Math.abs(Math.sin(s.gait))*s.walk*1.1,breath=Math.sin(s.t*1.55)*sleep*.32;
-  this.root.rotation.x=s.pitch||0;
-  this.body.position.y=lerp(28+s.sit*3+bob-s.crouch*6,15.5,sleep)+breath;this.body.position.z=lerp(-s.sit*4,-1,sleep);this.body.rotation.x=lerp(-s.sit*.8,0,sleep);this.body.scaling.y=lerp(15,13.5,sleep);
+  this.root.rotation.x=s.pitch||0;this.root.rotation.z=0;
+  this.body.position.y=lerp(28+s.sit*3+bob-s.crouch*6,15.5,sleep)+breath;this.body.position.z=lerp(-s.sit*4,-1,sleep);this.body.rotation.x=lerp(-s.sit*.8,0,sleep);this.body.rotation.z=0;this.body.position.x=0;this.body.scaling.y=lerp(15,13.5,sleep);
   this.chest.position.y=lerp(36+s.sit*7+bob-s.crouch*5,22,sleep)+breath;this.chest.position.z=lerp(15-s.sit*4,13,sleep);this.chest.scaling.y=lerp(15,10,sleep);
   this.head.position.set(0,lerp(46+s.sit*9+bob-s.crouch*5,17,sleep)+breath*.3,lerp(23-s.sit*9,25,sleep));this.head.rotation.x=sleep*.2;this.head.rotation.y=(-s.yaw*.24+Math.sin(s.t*.55+s.seed)*.1*s.sit)*(1-sleep);this.head.rotation.z=lerp(Math.sin(s.t*.45+s.seed)*.035*s.sit,-.16,sleep);
   for(let i=0;i<this.eyes.length;i++){this.eyes[i].scaling.y=sleep>.5?1:s.blink;for(const part of this.eyeParts[i].parts)part.setEnabled(sleep<=.5);this.eyeParts[i].lid.setEnabled(sleep>.5);}
   for(const {hip,paw,front,side}of this.legs){
    const stride=Math.sin(s.gait+(front?0:Math.PI)+(side>0?Math.PI:0))*s.walk*(1-s.sit)*(1-sleep);
    const legScale=lerp(front?1+s.sit*.13:1-s.sit*.45,front?.3:.25,sleep)*(1-s.crouch*.22-s.tuck*.25);
-   hip.rotation.x=stride*.42-s.tuck*(front?.5:-.45);hip.scaling.y=legScale;hip.position.y=24.3*legScale+Math.max(0,stride)*2.2;hip.position.z=lerp(front?16+s.sit*2:-16+s.sit*6,front?25:-14,sleep);paw.rotation.x=-hip.rotation.x;
+   hip.rotation.x=stride*.42-s.tuck*(front?.5:-.45);hip.rotation.z=0;hip.position.x=side*8.5;hip.scaling.y=legScale;hip.position.y=24.3*legScale+Math.max(0,stride)*2.2;hip.position.z=lerp(front?16+s.sit*2:-16+s.sit*6,front?25:-14,sleep);paw.rotation.x=-hip.rotation.x;
   }
   for(const h of this.haunches){h.setEnabled(s.sit>.02||sleep>.02);h.position.y=lerp(13,9.7,sleep);h.scaling.y=lerp(12.5,9.5,sleep);}
+  if(s.upright){
+   // Human capture is retargeted as small feline paw, hip and head movements;
+   // rear paws keep their own proportions and remain on the pavement.
+   const u=s.upright,move=this.reduced.matches?null:danceFrame(s),lean=move?move.lean:0;
+   const groove=catDanceMotion(s.danceTime||0,s.danceDuration||0,this.reduced.matches);
+   this.root.position.x+=groove.sway*u;this.root.rotation.z=groove.twist*u;
+   this.body.position.y=lerp(this.body.position.y,40+groove.bob,u);this.body.position.z=lerp(this.body.position.z,-10,u);
+   this.body.rotation.x=lerp(this.body.rotation.x,-1.35,u);this.body.rotation.z=(lean*.9+groove.twist)*u;
+   this.chest.position.y=lerp(this.chest.position.y,58+groove.bob,u);this.chest.position.z=lerp(this.chest.position.z,-3,u);
+   this.head.position.y=lerp(this.head.position.y,76+groove.bob,u);this.head.position.z=lerp(this.head.position.z,0,u);
+   this.head.rotation.z+=(move?move.headRoll*.6:0)*u;this.head.rotation.y+=(move?move.headYaw*.4:0)*u;
+   for(const {hip,paw,front,side}of this.legs){
+    const i=side<0?0:1;
+    if(front){const arm=move?.arms[i],pole=move?.poles[i];hip.position.y=lerp(hip.position.y,57+groove.bob,u);hip.position.z=lerp(hip.position.z,2,u);hip.rotation.x=lerp(hip.rotation.x,-1.35+(arm?arm[2]*.004:0),u);hip.rotation.z=(side*(.65+(pole?Math.max(-.25,Math.min(.55,(pole[1]-45)*.01)):0))+(side<0?groove.leftPaw:groove.rightPaw)*.65)*u;}
+    else{hip.position.z=lerp(hip.position.z,-10,u);hip.position.x+=side*2*u;hip.position.y+=(side<0?groove.leftStep:groove.rightStep)*u;hip.rotation.x=(move?move.legs[i].x*.38:0)*u;hip.rotation.z=((move?move.legs[i].z*.38:side*.04)+groove.twist*.5)*u;}
+    paw.rotation.x=-hip.rotation.x*.45;
+   }
+  }
   this.B.MeshBuilder.CreateTube('cat-tail',{path:this.tailPoints(s.sit,s.t*(1-sleep*.9),sleep),instance:this.tail});
   this.shadow.position.copyFrom(this.owner.vec(s.x+4,s.groundY-.14,s.z-4));this.shadow.scaling.x=lerp(24-s.sit*4,25,sleep)*(1-s.jump/160);this.shadow.scaling.y=lerp(35-s.sit*11,34,sleep)*(1-s.jump/160);this.shadow.material.alpha=.27*(1-s.jump/110);
  }

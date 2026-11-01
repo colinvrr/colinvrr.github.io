@@ -9,8 +9,8 @@ export function passagePose(x,z,time,{walk=1,sit=0,sleep=0,yaw=1.25,seed=1,gait=
 // Driven by the application's existing visible-frame clock. No private timer
 // or RAF can continue the story behind a hidden tab or after cancellation.
 export class CatPassage {
- constructor({getScene,machine,mask,reduced=()=>false,visible=()=>true,onSwap,onComplete,onError=()=>{},onCancel=()=>{}}){
-  Object.assign(this,{getScene,machine,mask,reduced,visible,onSwap,onComplete,onError,onCancel});this.active=false;this.version=0;
+ constructor({getScene,machine,mask,reduced=()=>false,visible=()=>true,instant=false,onSwap,onComplete,onError=()=>{},onCancel=()=>{}}){
+  Object.assign(this,{getScene,machine,mask,reduced,visible,instant,onSwap,onComplete,onError,onCancel});this.active=false;this.version=0;
   this.onClick=()=>this.skip();mask?.addEventListener?.('click',this.onClick);
  }
  start(){
@@ -42,6 +42,14 @@ export class CatPassage {
   const edge=Math.min(radius+8,Math.min(r.width,r.height)*.32),weight=clamp((zoom-1)/1.6);
   const dx=(Math.max(edge,Math.min(r.width-edge,p.x))-p.x)*weight,dy=(Math.max(edge,Math.min(r.height-edge,p.y))-p.y)*weight;
   if(scene.canvas?.style){scene.canvas.style.transformOrigin=`${p.x}px ${p.y}px`;scene.canvas.style.transform=zoom===1?'':`translate(${dx}px, ${dy}px) scale(${zoom})`;}
+  // Keep the garage image registered to the same facade as the camera lens.
+  const window=scene.window,frame=scene.frameElement;
+  if(window?.style&&frame){
+   const machineRect=this.machine.getBoundingClientRect(),frameRect=frame.getBoundingClientRect();
+   const left=frameRect.left-machineRect.left+window.offsetLeft,top=frameRect.top-machineRect.top+window.offsetTop;
+   window.style.transformOrigin=`${p.x-left}px ${p.y-top}px`;
+   window.style.transform=zoom===1?'':`translate(${dx}px, ${dy}px) scale(${zoom})`;
+  }
   if(this.mask){this.mask.style.cssText=`--iris-x:${r.left+p.x+dx}px;--iris-y:${r.top+p.y+dy}px;--iris-radius:${radius}px;`;this.mask.dataset.phase=this.phase;}
  }
  drawOut(){
@@ -58,6 +66,7 @@ export class CatPassage {
   try{
    await this.onSwap();
    if(!this.active||version!==this.version)return;
+   if(this.instant){this.finish();return;}
    this.phase='in';this.time=0;
    if(!this.visible())return;
    if(this.reduced())this.finish();else this.drawIn();
@@ -74,6 +83,7 @@ export class CatPassage {
  skip(){if(!this.active)return;this.paused=false;if(this.phase==='out')this.swap();else if(this.phase==='in')this.finish();}
  clear(){
   const scene=this.getScene();if(scene.canvas?.style){scene.canvas.style.transform='';scene.canvas.style.transformOrigin='';}
+  if(scene.window?.style){scene.window.style.transform='';scene.window.style.transformOrigin='';}
   if(this.mask)this.mask.hidden=true;
   this.machine?.setAttribute?.('aria-busy','false');if(this.machine?.dataset)this.machine.dataset.travelling='false';
  }

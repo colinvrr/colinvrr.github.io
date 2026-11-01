@@ -1,3 +1,4 @@
+import {berlinEffectsFrame} from './berlin-fx.mjs';
 const clamp=v=>Math.max(0,Math.min(1,Number(v)||0));
 function rgb(h){
  const sector=h*6,i=Math.floor(sector),f=sector-i,p=.12,q=1-f*.88,t=.12+f*.88;
@@ -16,7 +17,7 @@ export function berlinAudioFrame(time,bands=[],attacks=[],step=0){
  return {colors,pulse:Math.min(1,b[0]*.55+a[0]*.8)};
 }
 export class BerlinReactivity {
- constructor(owner){this.owner=owner;this.panes=owner.windowPanes||[];this.speakers=owner.speakerCones||[];this.time=0;this.step=0;this.previousAttack=0;this.pulse=0;this.lit=false;}
+ constructor(owner){this.owner=owner;this.panes=owner.windowPanes||[];this.speakers=owner.speakerCones||[];this.effects=owner.stageEffects;this.time=0;this.step=0;this.previousAttack=0;this.pulse=0;this.lit=false;}
  applySpeakers(pulse,reduced){
   const motion=Math.sqrt(clamp(pulse))*(reduced?.15:1);
   for(const {driver,cone,glow,driverZ,coneZ}of this.speakers){
@@ -30,7 +31,7 @@ export class BerlinReactivity {
   if(!audio.playing){
    if(audio.active||!this.lit)return false;
    for(const {material}of this.panes)material.emissiveColor.set(0,0,0);
-   this.applySpeakers(0,false);this.time=0;this.pulse=0;this.step=0;this.previousAttack=0;this.lit=false;
+   this.applySpeakers(0,false);this.effects?.reset();this.time=0;this.pulse=0;this.step=0;this.previousAttack=0;this.lit=false;
    this.owner.canvas.dataset.windowLightLevel='0';this.owner.canvas.dataset.speakerPulse='0';return true;
   }
   this.time+=Math.max(0,dt)*(reduced?.2:1);
@@ -38,18 +39,20 @@ export class BerlinReactivity {
   this.previousAttack=attack;
   const target=berlinAudioFrame(this.time,audio.bands,audio.transients,this.step),blend=1-Math.exp(-Math.max(0,dt)*(reduced?6:22));
   let changed=false,level=0;
-  for(const {material,column,row}of this.panes){
+  for(const {material,column,row,fixture}of this.panes){
    const offset=(row*7+column)*3,c=material.emissiveColor;
    for(const [k,key]of ['r','g','b'].entries()){
-    const next=c[key]+(target.colors[offset+k]*(reduced?.18:.4)-c[key])*blend,value=next<.0001?0:next;
+    const next=c[key]+(target.colors[offset+k]*(fixture?(reduced?.25:1.2):(reduced?.18:.4))-c[key])*blend,value=next<.0001?0:next;
     if(Math.abs(c[key]-value)>.00001)changed=true;c[key]=value;level=Math.max(level,value);
    }
   }
   const pulse=this.pulse+(target.pulse-this.pulse)*(1-Math.exp(-dt*(target.pulse>this.pulse?38:14)));
   if(Math.abs(pulse-this.pulse)>.00001)changed=true;this.pulse=pulse<.0001?0:pulse;
-  this.applySpeakers(this.pulse,reduced);this.lit=true;
+  this.applySpeakers(this.pulse,reduced);
+  const effects=berlinEffectsFrame(this.time,audio.bands,audio.transients,reduced);
+  changed=this.effects?.apply(effects)||changed;this.lit=true;
   this.owner.canvas.dataset.windowLightLevel=level.toFixed(3);this.owner.canvas.dataset.speakerPulse=this.pulse.toFixed(3);
   return changed;
  }
- dispose(){this.owner=null;this.panes=[];this.speakers=[];}
+ dispose(){this.owner=null;this.panes=[];this.speakers=[];this.effects=null;}
 }

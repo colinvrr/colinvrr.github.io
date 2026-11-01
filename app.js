@@ -1,12 +1,12 @@
 import { WorldDeck } from './video-score.mjs';
 import { MetalShutter } from './shutter.mjs?v=20';
-import { StreetScene } from './model-scene.mjs?v=53';
+import { StreetScene } from './model-scene.mjs?v=77';
 import { UniverseRenderer, universeNames } from './universes.mjs?v=36';
 import { createMediaControls } from './media-controls.mjs';
 import { MechanicalFeedback } from './mechanics.mjs?v=43';
 import { createTrackClock, formatTime } from './track-clock.mjs?v=43';
 import { applyPlace, places } from './places.mjs?v=38';
-import { CatPassage } from './scene-passage.mjs?v=36';
+import { CatPassage } from './scene-passage.mjs?v=37';
 
 let canvas = document.querySelector('#canvas');
 const surface = document.querySelector('#surface');
@@ -25,6 +25,8 @@ const playbackState = document.querySelector('#playback-state');
 const seekInput = document.querySelector('#seek');
 const volumeInput = document.querySelector('#volume');
 const volumeValue = document.querySelector('#volume-value');
+const dayNightInput = document.querySelector('#day-night');
+const dayNightValue = document.querySelector('#day-night-value');
 const muteButton = document.querySelector('#mute');
 const toolsToggle = document.querySelector('#tools-toggle');
 const toolsMenu = document.querySelector('#tools-menu');
@@ -35,6 +37,19 @@ const transitionCancel = document.querySelector('#cancel-transition');
 // This is the one media element used by mixes and local files, including after Stop.
 const mixAudio = document.querySelector('#preloaded-mix') || new Audio();
 let outputVolume=1,outputMuted=false,outputGain=null,queuedSeek=0;
+const updateDayNightControl = value => {
+  const level=Number(value);
+  dayNightInput.style.setProperty('--fill',`${level*100}%`);
+  const label=level<.35?'Nuit':level<.65?'Crépuscule':'Jour';
+  dayNightValue.textContent=label;
+  dayNightInput.setAttribute('aria-valuetext',label);
+};
+dayNightInput.addEventListener('input',()=>{
+  const level=Number(dayNightInput.value);
+  scene.setDayNightLevel?.(level);
+  updateDayNightControl(level);
+});
+updateDayNightControl(dayNightInput.value);
 const stopButton = document.querySelector('#stop');
 const shareButton = document.querySelector('#share');
 const shareLabel = document.querySelector('#share-label');
@@ -69,7 +84,7 @@ function prepareMixAudio(src,preferred){
   preparedAudio=audio;
   if(audio.networkState!==2)audio.load();
 }
-const mixesReady = fetch('./mixes.json?v=38').then(response => {
+const mixesReady = fetch('./mixes.json?v=39').then(response => {
   if(!response.ok)throw new Error('Mix configuration unavailable');
   return response.json();
 }).then(config => {
@@ -588,22 +603,30 @@ async function selectScene(index){
  if(passage?.active)return;
  const generation=++inputGeneration;
  await mixesReady;
- await scene.ready;
  if(disposed||generation!==inputGeneration)return;
  const targetIndex=chapters.findIndex(chapter=>chapter.place===target.id);
  if(targetIndex<0){setStatus('Cette scène n’est pas disponible pour le moment.',true);return;}
  const audio=media||preparedAudio;
  releaseSource();
- beginPassage(audio,{index:targetIndex});
+ setStatus(`Chargement de ${target.label||'la scène'}…`);
+ beginPassage(audio,{index:targetIndex,instant:true});
 }
-function beginPassage(audio,{index=(chapterIndex+1)%chapters.length}={}){
+async function waitForSceneReady(scene,maxWait=900){
+ let timer;
+ await Promise.race([
+  scene.ready,
+  new Promise(resolve=>{timer=setTimeout(resolve,maxWait);})
+ ]);
+ clearTimeout(timer);
+}
+function beginPassage(audio,{index=(chapterIndex+1)%chapters.length,instant=false}={}){
  if(disposed)return;
  const nextIndex=index,next=chapters[nextIndex];
  const destination=places.find(item=>item.id===next.place);
  if(!destination){setStatus('MIX terminé. Volet fermé.');return;}
  passage?.dispose();
  closeTools();
- passage=new CatPassage({getScene:()=>scene,machine,mask:document.querySelector('#scene-iris'),reduced:()=>reducedMotion.matches,visible:()=>!document.hidden,
+ passage=new CatPassage({getScene:()=>scene,machine,mask:document.querySelector('#scene-iris'),reduced:()=>reducedMotion.matches,visible:()=>!document.hidden,instant,
   onSwap:async()=>{
    const engine=scene.engine,previousPlace=place,transition=passage,version=transition.version;
    const modelCanvas=document.querySelector('#model-canvas');modelCanvas.style.transform='';modelCanvas.style.transformOrigin='';
@@ -626,7 +649,7 @@ function beginPassage(audio,{index=(chapterIndex+1)%chapters.length}={}){
     transition.clear();syncControls();
    };
    try{
-    candidate=new StreetScene(modelCanvas,visualWindow,destination,{frameElement:surface,engine});scene=candidate;await candidate.ready;
+    candidate=new StreetScene(modelCanvas,visualWindow,destination,{frameElement:surface,engine});scene=candidate;await waitForSceneReady(candidate);
    }catch(error){await restore();throw error;}
    if(disposed){candidate.dispose({keepEngine:!!engine});return;}
    if(!transition.active||transition.version!==version){
@@ -638,7 +661,7 @@ function beginPassage(audio,{index=(chapterIndex+1)%chapters.length}={}){
    sceneLoading=false;modelCanvas.dataset.sceneLoading='false';
    track.src=next.src;track.title=next.title||'MIX';track.duration=Number(next.duration)||0;track.file=null;
    visualTime=0;shapePhase=0;graphicsDirty=true;checkOutput=true;checkedWorld=null;
-   prepareMixAudio(track.src,audio);syncControls();await scene.ready;if(place.model!=='groundfloor-apartment'&&!graphicsReady)prepareGraphics();
+   prepareMixAudio(track.src,audio);syncControls();await waitForSceneReady(scene,250);if(place.model!=='groundfloor-apartment'&&!graphicsReady)prepareGraphics();
   },
   onComplete:async()=>{
    transitionCancel.hidden=true;syncControls();
@@ -977,12 +1000,17 @@ function prepareGraphics(){
 }
 if(document.documentElement){
   // Reveal the street independently of audio buffering and video shader compilation.
-  Promise.resolve(scene.ready).then(()=>{
-    if(disposed)return;
+  const reveal=()=>{
+    if(disposed||document.documentElement.dataset.loading==='false')return;
     document.documentElement.dataset.loading='false';
     document.querySelector('#startup').hidden=true;
     // Give the completed architecture a paint before preparing the video engine.
     requestAnimationFrame(()=>setTimeout(prepareGraphics,0));
+  };
+  const startupTimer=setTimeout(reveal,700);
+  Promise.resolve(scene.ready).then(()=>{
+    clearTimeout(startupTimer);
+    reveal();
   });
 }else prepareGraphics();
 document.addEventListener('visibilitychange',()=>{

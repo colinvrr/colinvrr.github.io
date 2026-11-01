@@ -1,5 +1,8 @@
 import {loft, paintedMaterial, sculptedHead, hairLock, hand, aimLimb} from './ps2-characters.mjs?v=48';
-import {buildBerlinFacade} from './berlin-scene.mjs?v=47';
+import {buildBerlinFacade} from './berlin-scene.mjs?v=48';
+import {buildBerlinStudio} from './berlin-studio.mjs';
+import {djHandsUp} from './dance-performance.mjs';
+import {BerlinStageEffects} from './berlin-fx.mjs';
 // A real recessed ground-floor room: the performer, counter, records and plant
 // are volumes behind the glazing, never a painted replacement for the scene.
 export function buildApartment(owner){
@@ -24,6 +27,8 @@ export function buildApartment(owner){
    s.box(x,700+row*26,Math.min(49,996-x),24,3,-514,['#3c3942','#423c43','#484048','#393640'][(col*3+row)%4],stone,'interior-wall',.2);
   }
  }
+ buildBerlinStudio(s);
+ if(berlin){s.stageEffects=new BerlinStageEffects(s);}else{
  // Record shelves and sleeves sit against the back wall.
  for(const y of [888,1012,1130])s.box(279,y,155,10,91,-461,'#b18a55',wood,'interior-wood',1);
  const sleeves=['#aa6656','#b5a375','#7b9591','#59717b','#b8bcb0'];
@@ -38,9 +43,10 @@ export function buildApartment(owner){
   const bulb=B.MeshBuilder.CreateSphere('apartment-lamp',{diameter:30,segments:12},s.scene);bulb.position=s.vec(868,821,-285);s.add(bulb,berlin?'#df9f43':'#f9d49a',null,'interior-glow',false);
  }
  s.tube([[868,697,-285],[868,785,-285]],'#484a43',1.7,'interior-dark');
+ }
  // A timber counter, with a metal foot rail, leaves the DJ's hands in view.
- s.box(414,992,446,154,164,-152,berlin?'#595653':'#8e6543',berlin?stone:wood,'interior-wood',3);
- s.box(397,979,480,17,202,-152,berlin?'#8a8071':'#c4a477',berlin?stone:wood,'interior-wood',3);
+ s.box(414,992,446,154,164,-152,berlin?'#343a3a':'#8e6543',berlin?stone:wood,'interior-wood',3);
+ s.box(397,979,480,17,202,-152,berlin?'#666d69':'#c4a477',berlin?stone:wood,'interior-wood',3);
  for(const x of [429,550,671,792])s.box(x,1011,3,115,3,-68,'#5b4f3f',null,'interior-dark',.5);
  s.tube([[426,1122,-42],[852,1122,-42]],'#9b936e',2,'interior-brass');
  s.records.push({kind:'dj',z:-190});
@@ -120,14 +126,17 @@ export class ApartmentDJ {
   this.key=new B.HemisphericLight('dj-room-light',new B.Vector3(-.3,1,1),scene);this.key.intensity=berlin?1.08:.95;this.key.diffuse=berlin?new B.Color3(.91,.83,.7):new B.Color3(1,.84,.65);this.key.groundColor=new B.Color3(.25,.22,.2);this.key.includedOnlyMeshes=this.meshes;
   this.apply([0,0,0]);
  }
- advance(dt,playing,bands,reduced=false){if(!playing||!this.root)return false;this.time+=dt*(reduced?.2:1);this.apply(bands);return true;}
- apply(bands){
+ advance(dt,playing,bands,reduced=false){if(!playing||!this.root)return false;this.time+=dt*(reduced?.2:1);this.apply(bands,reduced);return true;}
+ apply(bands,reduced=false){
   if(!this.root)return;const t=this.time,bass=bands?.[0]||0,mid=bands?.[1]||0;
   this.body.rotation.z=Math.sin(t*1.4)*(.025+bass*.025);this.head.rotation.x=.11+Math.sin(t*2.7)*(.035+bass*.045);this.head.rotation.z=Math.sin(t*1.4)*.035;
   this.head.rotation.y=.3+Math.sin(t*.45)*.15;
   for(const {side,shoulder,elbow,wrist,sleeve,upper,forearm,hand:palm}of this.arms){
    const reach=Math.sin(t*.75+(side<0?0:2))*10,press=Math.sin(t*3+side)*(.5+mid*1.8);
-   elbow.set(side*(69+reach*.2),64+press,34);wrist.set(side*(64+reach),17+Math.max(0,press),101+Math.cos(t*.65+side)*8);
+   const up=djHandsUp(t,side,reduced),wave=Math.sin(t*4+side)*8;
+   elbow.set(side*((69+reach*.2)*(1-up)+67*up),(64+press)*(1-up)+(156+wave*.3)*up,34*(1-up)+15*up);
+   wrist.set(side*((64+reach)*(1-up)+(69+wave*.4)*up),(17+Math.max(0,press))*(1-up)+(218+wave)*up,(101+Math.cos(t*.65+side)*8)*(1-up)+20*up);
+   palm.rotation.x=-Math.PI/2*(1-up);palm.rotation.z=side*(.12+.22*up);
    const cuff=BVector(this.B,shoulder,elbow,.56);aimLimb(this.B,sleeve,shoulder,cuff);aimLimb(this.B,upper,cuff,elbow);aimLimb(this.B,forearm,elbow,wrist);palm.position.copyFrom(wrist);
   }
   for(const disc of this.discs)disc.rotation.y=t*1.8;

@@ -1,8 +1,8 @@
-import {buildApartment, ApartmentDJ} from './apartment-scene.mjs?v=48';
-import {buildBerlinNeighbors} from './berlin-scene.mjs?v=47';
+import {buildApartment, ApartmentDJ} from './apartment-scene.mjs?v=49';
+import {buildBerlinNeighbors} from './berlin-scene.mjs?v=48';
 import {BerlinReactivity} from './berlin-reactivity.mjs?v=47';
 import * as B from './vendor/babylon.min.js';
-import { buildNeighbors } from './street-neighbors.mjs?v=53';
+import {buildNeighbors} from './street-neighbors.mjs?v=70';
 import { FACADES, centeredBays } from './facade-layout.mjs';
 import { buildStreetGround, DOORSTEP, createRoadMaps } from './street-ground.mjs?v=47';
 import { StreetCat } from './cat-visitor.mjs?v=47';
@@ -11,6 +11,7 @@ import {streetFraming} from './street-framing.mjs';
 import {buildResidentInterior} from './resident-interiors.mjs?v=52';
 import {createGlassEnvironment,configureGlass,buildWindowRecess} from './architectural-glass.mjs';
 import {buildUpperFacades} from './upper-facades.mjs';
+import {lightNeighborInteriors, buildNeighborInterior} from './neighbor-interiors.mjs';
 
 // All architecture is real geometry. Coordinates are centimetre-like facade
 // units; the audiovisual opening remains exactly aligned with the 2D player.
@@ -65,14 +66,16 @@ export class StreetScene {
   try{
    this.engine=sharedEngine||new B.Engine(canvas,true,{alpha:true,preserveDrawingBuffer:true,stencil:false});
    this.scene=new B.Scene(this.engine);this.scene.useRightHandedSystem=true;this.scene.clearColor=new B.Color4(0,0,0,0);this.scene.ambientColor=new B.Color3(.13,.14,.16);
+   this.scene.fogMode=B.Scene.FOGMODE_EXP2;this.scene.fogDensity=0;this.scene.fogColor=new B.Color3(.1,.12,.17);
    this.scene.imageProcessingConfiguration.toneMappingEnabled=true;this.scene.imageProcessingConfiguration.toneMappingType=B.ImageProcessingConfiguration.TONEMAPPING_ACES;this.scene.imageProcessingConfiguration.exposure=place?.theme==='berlin'?1.02:1.12;this.scene.imageProcessingConfiguration.contrast=1.08;
    this.camera=new B.FreeCamera('fixed-front',new B.Vector3(0,0,3000),this.scene);this.camera.setTarget(B.Vector3.Zero());this.camera.mode=B.Camera.PERSPECTIVE_CAMERA;this.camera.fov=.43;this.camera.position.z=H/(2*Math.tan(this.camera.fov/2))+33;this.camera.minZ=10;this.camera.maxZ=6500;
    const berlin=place?.theme==='berlin';
    if(berlin){this.camera.position.y=-200;this.camera.setTarget(new B.Vector3(0,-200,0));}
-   const sky=new B.HemisphericLight('soft-sky',new B.Vector3(-.3,1,.4),this.scene);sky.intensity=berlin?.61:.44;sky.diffuse=berlin?new B.Color3(.6,.74,.92):new B.Color3(.86,.79,.83);sky.groundColor=berlin?new B.Color3(.28,.32,.38):new B.Color3(.36,.27,.22);
-   const sun=new B.DirectionalLight('late-afternoon',new B.Vector3(berlin?-.65:.7,berlin?-.5:-.38,-1),this.scene);sun.position=new B.Vector3(berlin?650:-650,1400,1800);sun.intensity=berlin?1.45:3.05;sun.diffuse=berlin?new B.Color3(.74,.79,.9):new B.Color3(1,.52,.20);sun.shadowMinZ=100;sun.shadowMaxZ=4300;sun.shadowFrustumSize=3400;
-   this.shadows=new B.ShadowGenerator(2048,sun);this.shadows.useContactHardeningShadow=true;this.shadows.contactHardeningLightSizeUVRatio=.045;this.shadows.filteringQuality=B.ShadowGenerator.QUALITY_MEDIUM;this.shadows.bias=.0002;this.shadows.normalBias=.45;this.shadows.setDarkness(.18);
+   const sky=new B.HemisphericLight('soft-sky',new B.Vector3(-.3,1,.4),this.scene);this.skyLight=sky;sky.intensity=berlin?.61:.44;sky.diffuse=berlin?new B.Color3(.6,.74,.92):new B.Color3(.86,.79,.83);sky.groundColor=berlin?new B.Color3(.28,.32,.38):new B.Color3(.36,.27,.22);
+   const sun=new B.DirectionalLight('late-afternoon',new B.Vector3(berlin?-.65:.7,berlin?-.5:-.38,-1),this.scene);this.sunLight=sun;sun.position=new B.Vector3(berlin?650:-650,1400,1800);sun.intensity=berlin?1.45:3.05;sun.diffuse=berlin?new B.Color3(.74,.79,.9):new B.Color3(1,.52,.20);sun.shadowMinZ=100;sun.shadowMaxZ=4300;sun.shadowFrustumSize=3400;
+   this.shadows=new B.ShadowGenerator(place?.theme==='berlin'?1024:2048,sun);this.shadows.useContactHardeningShadow=place?.theme!=='berlin';this.shadows.contactHardeningLightSizeUVRatio=.045;this.shadows.filteringQuality=B.ShadowGenerator.QUALITY_MEDIUM;this.shadows.bias=.0002;this.shadows.normalBias=.45;this.shadows.setDarkness(.18);
    this.environment=this.createEnvironment();this.glassEnvironment=createGlassEnvironment(this);
+   this.dayNightElapsed=0;this.dayNightCycle=900;this.updateDayNight(0);
   }catch(error){this.scene?.dispose();this.engine?.dispose();this.engine=null;this.setupCanvas();}
   this.canvas.dataset.renderer=this.engine?'modeled-pbr':'canvas2d';this.canvas.dataset.lighting=place?.theme==='berlin'?'berlin-blue-hour':'winter-golden-hour';this.canvas.dataset.architecture=place?.theme==='berlin'?'berlin-industrial':'paris-haussmann';this.build();this.cat=new StreetCat(this);this.dj=place?.model==='groundfloor-apartment'?new ApartmentDJ(this):null;this.reactivity=place?.theme==='berlin'?new BerlinReactivity(this):null;this.resident=new StreetResident(this);this.canvas.dataset.artDirection=place?.theme==='berlin'?'ps2-painted-2004':'original';this.canvas.dataset.performer=this.dj?'dj':'none';this.canvas.dataset.djTime='0';this.canvas.dataset.windowLightLevel='0';this.canvas.dataset.speakerPulse='0';
   this.canvas.dataset.activeScenes=String(this.engine?.scenes.length||0);this.canvas.dataset.peakScenes=String(Math.max(Number(this.canvas.dataset.peakScenes)||0,this.engine?.scenes.length||0));
@@ -100,6 +103,8 @@ export class StreetScene {
   else {m=new B.PBRMaterial(kind,this.scene);m.albedoColor=B.Color3.FromHexString(color);m.metallic=({steel:.78,iron:.65,brass:.8,glass:.1})[kind]??0;m.roughness=({steel:.63,iron:.49,brass:.38,glass:.12,wood:.62,fabric:.95,asphalt:.98,granite:.9})[kind]??.86;m.reflectionTexture=this.environment;m.environmentIntensity=kind==='glass'?.8:.32;m.directIntensity=1;m.enableSpecularAntiAliasing=true;if(map)m.albedoTexture=this.texture(map);if((kind==='stone'||kind==='asphalt'||kind==='granite')&&this.place?.theme!=='berlin'){m.bumpTexture=this.texture(this.maps.normal.image);m.bumpTexture.level=kind==='asphalt'?.09:kind==='granite'?.23:.18;}if(kind==='glass'){m.albedoColor=B.Color3.FromHexString(color);m.clearCoat.isEnabled=true;m.clearCoat.intensity=1;m.clearCoat.roughness=.09;}if(kind==='fabric'){m.sheen.isEnabled=true;m.sheen.intensity=.18;}}
   if(this.place?.theme==='berlin'&&m instanceof B.PBRMaterial&&!m.metadata?.glazing){m.metallic=kind==='brass'?.35:.08;m.roughness=.92;m.environmentIntensity=.1;}
   if(kind.startsWith('interior-')&&kind!=='interior-glass'){m.emissiveColor=B.Color3.FromHexString(color).scale(kind==='interior-glow'?1.3:this.place?.theme==='berlin'?.1:.22);m.roughness=.72;}
+  if(kind==='studio-neon'){m.unlit=true;m.albedoColor=B.Color3.Black();m.emissiveColor=B.Color3.FromHexString(color).scale(.65);}
+  if(kind.startsWith('interior-neighbor-')){m.directIntensity=.45;m.emissiveColor=B.Color3.FromHexString(color).scale(kind==='interior-neighbor-glow'?.8:.08);if(kind==='interior-neighbor-glow')m.metadata={...(m.metadata||{}),windowGlow:true};}
   if(kind.startsWith('road-')){
    m.metadata={street:true};m.environmentIntensity=kind==='road-wet'?.6:.18;
    m.roughness=kind==='road-wet'?.32:kind==='road-iron'?.66:kind==='road-granite'?.91:.94;
@@ -154,7 +159,7 @@ export class StreetScene {
   const stone=this.maps.stone.image;
   const animated=this.place?.theme!=='berlin'&&Math.abs(x-RESIDENT_WINDOW.x)<.1;
   if(animated)buildResidentInterior(this,{x,y,width:w,height:h});
-  else buildWindowRecess(this,{x,y,width:w,height:h});
+  else buildNeighborInterior(this,{x,y,w,h},(this.neighborRoom=(this.neighborRoom||0)+1));
   this.frame(x-5,y-5,w+10,h+10,-18,7,'#b5b4a7',null,'wood');
   const pane=col=>{
    for(let row=0;row<3;row++){
@@ -306,11 +311,11 @@ export class StreetScene {
   }
  }
  consolidate(){
-  if(!this.engine)return;const groups=new Map();for(const mesh of this.staticMeshes){const key=mesh.material.uniqueId+':'+mesh.metadata.cast;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(mesh);}
-  this.staticMeshes=[];for(const parts of groups.values()){const cast=parts[0].metadata.cast,mesh=parts.length>1?B.Mesh.MergeMeshes(parts,true,true,undefined,false,false):parts[0];if(!mesh)continue;mesh.receiveShadows=true;mesh.isPickable=false;mesh.freezeWorldMatrix();this.staticMeshes.push(mesh);if(cast)this.shadows.addShadowCaster(mesh);}
+  if(!this.engine)return;const groups=new Map();for(const mesh of this.staticMeshes){const key=mesh.material.uniqueId+':'+mesh.metadata.cast+':'+(mesh.metadata.parisRoom!==undefined?'room':'outside');if(!groups.has(key))groups.set(key,[]);groups.get(key).push(mesh);}
+  this.staticMeshes=[];for(const parts of groups.values()){const metadata=parts[0].metadata,cast=metadata.cast,mesh=parts.length>1?B.Mesh.MergeMeshes(parts,true,true,undefined,false,false):parts[0];if(!mesh)continue;mesh.metadata=metadata;mesh.receiveShadows=true;mesh.isPickable=false;mesh.freezeWorldMatrix();this.staticMeshes.push(mesh);if(cast)this.shadows.addShadowCaster(mesh);}
   this.canvas.dataset.meshes=String(this.scene.meshes.length);this.canvas.dataset.triangles=String(this.scene.meshes.reduce((total,mesh)=>total+mesh.getTotalIndices(),0)/3);
  }
- build(){buildUpperFacades(this);if(this.place?.theme==='berlin')buildBerlinNeighbors(this);else buildNeighbors(this);if(this.place?.model==='groundfloor-apartment'){buildApartment(this);this.shutter();}else{this.masonry();this.windows();this.door();this.storefront();this.shutter();this.awning();}this.ground();this.records.sort((a,b)=>a.z-b.z);this.consolidate();this.lightStreet();this.updateBlades();}
+ build(){buildUpperFacades(this);if(this.place?.theme==='berlin')buildBerlinNeighbors(this);else buildNeighbors(this);if(this.place?.model==='groundfloor-apartment'){buildApartment(this);this.shutter();}else{this.masonry();this.windows();this.door();this.storefront();this.shutter();this.awning();}this.ground();this.records.sort((a,b)=>a.z-b.z);this.consolidate();lightNeighborInteriors(this);this.lightStreet();this.updateBlades();}
  lightStreet(){
   if(!this.engine)return;
   const meshes=this.staticMeshes.filter(mesh=>mesh.material?.metadata?.street);
@@ -345,6 +350,8 @@ export class StreetScene {
  }
  tick(dt,now,audio={}){
   if(this.disposed||!this.cat)return;
+  if(!this.dayNightManual)this.dayNightElapsed=(this.dayNightElapsed+Math.max(0,dt))%this.dayNightCycle;
+  const dayNightChanged=this.updateDayNight(this.dayNightElapsed);
   const changed=this.cat.advance(dt),residentChanged=this.resident?.advance(dt,this.cat.state),due=now-(this.lastCatDraw||0)>33;
   this.djElapsed=(this.djElapsed||0)+(audio.playing?dt:0);
   const djChanged=due&&this.dj?.advance(this.djElapsed,!!audio.playing,audio.bands,this.cat.reduced.matches);
@@ -352,7 +359,15 @@ export class StreetScene {
   const lightsChanged=due&&this.reactivity?.advance(this.lightElapsed,audio,this.cat.reduced.matches);
   if(due)this.lightElapsed=0;
   if(due)this.djElapsed=0;if(djChanged)this.canvas.dataset.djTime=this.dj.time.toFixed(3);
-  if(changed||residentChanged||((this.cat.state.visible||this.resident?.state.visible||this.resident?.state.windowOpen>0||this.resident?.state.doorOpen>0)&&due)||djChanged||lightsChanged){this.cat.apply();this.resident?.apply();this.lastCatDraw=now;this.renderCat(lightsChanged);}
+  if(changed||residentChanged||dayNightChanged||((this.cat.state.visible||this.resident?.state.visible||this.resident?.state.windowOpen>0||this.resident?.state.doorOpen>0)&&due)||djChanged||lightsChanged){this.cat.apply();this.resident?.apply();this.lastCatDraw=now;this.renderCat(lightsChanged||dayNightChanged);}
+ }
+ setDayNightLevel(level){
+  if(!this.engine)return;
+  const value=Math.max(0,Math.min(1,Number(level)||0));
+  this.dayNightManual=true;
+  this.dayNightElapsed=(1-value)*this.dayNightCycle/2;
+  this.updateDayNight(this.dayNightElapsed);
+  this.render();
  }
  setCatJourneyPose(pose){if(this.disposed)return;this.cat.state=pose;this.cat.apply();this.renderCat();}
  catFocusPoint(){
@@ -363,9 +378,20 @@ export class StreetScene {
  settleCat(x=95,z=80){
   if(this.disposed||!this.cat)return;
   const cat=this.cat,width=this.viewWidth||1500;cat.timeline.begin({left:620-width/2-130,right:620+width/2+130},{rest:'sit',jump:false});
-  const v=cat.timeline.visit;v.startAt=cat.timeline.time;v.start=v.approach=v.stop=x;v.z=z;v.direction=v.exitDirection=1;v.incoming=0;v.outgoing=Math.abs(v.end-x)/100;
-  v.end=620+width/2+130;v.outgoing=Math.abs(v.end-x)/100;
-  v.phases=[{kind:'settle',at:0,duration:.95},{kind:'sit',at:.95,duration:9},{kind:'stand',at:9.95,duration:.85},{kind:'leave',at:10.8,duration:v.outgoing,from:x,to:v.end,direction:1}];v.duration=10.8+v.outgoing;
+  const v=cat.timeline.visit;
+  if(this.place?.theme==='berlin'){
+   const arrive=v.phases[0];arrive.from=x;arrive.to=v.stop;arrive.direction=1;arrive.duration=Math.max(.2,Math.abs(v.stop-x)/95);
+   let at=0;for(const phase of v.phases){phase.at=at;at+=phase.duration;}v.duration=at;
+   v.startAt=cat.timeline.time;cat.state=cat.timeline.sample();cat.apply();this.renderCat();return;
+  }
+  // On the return to Paris the cat continues towards the right-hand side,
+  // away from the resident's doorway and dance area.
+  const start=Math.max(500,x),arrive=v.phases[0];
+  arrive.from=start;arrive.to=v.approach;arrive.direction=1;
+  arrive.duration=Math.max(.2,Math.abs(v.approach-start)/100);v.incoming=arrive.duration;
+  let at=0;for(const phase of v.phases){phase.at=at;at+=phase.duration;}v.duration=at;
+  v.startAt=cat.timeline.time;
+
   cat.state=cat.timeline.sample();cat.apply();this.renderCat();
  }
  projectBounds(x0,x1,y0,y1,z0,z1){
@@ -387,6 +413,9 @@ export class StreetScene {
  }
  renderCat(lightsChanged=false){
   if(!this.engine||!this.canvas.dataset.ready){this.render();return;}
+  // Camera-facing beams cross the whole viewport, so their old and new paths
+  // require a full redraw instead of the smaller studio scissor rectangle.
+  if(lightsChanged&&this.stageEffects){this.render();return;}
   const next=this.catBounds(),previous=this.lastCatBounds,residentNext=this.resident?.bounds(),residentPrevious=this.lastResidentBounds;this.lastCatBounds=next;this.lastResidentBounds=residentNext;
   if(!next&&!previous&&!residentNext&&!residentPrevious&&!this.dj&&!lightsChanged)return;
   const regions=[previous,next,residentPrevious,residentNext,this.dj?this.projectBounds(240,1005,680,1168,-540,45):null,lightsChanged?this.projectBounds(103,1028,50,440,-110,15):null].filter(Boolean);if(!regions.length)return;
@@ -398,6 +427,67 @@ export class StreetScene {
   try{this.scene.render();}finally{this.engine.disableScissor();}
  }
  render(){if(this.disposed||!this.width)return;if(this.engine){this.scene.render();this.lastCatBounds=this.catBounds();this.lastResidentBounds=this.resident?.bounds();}else this.drawCanvas();}
+ updateDayNight(elapsed){
+  if(!this.engine)return false;
+  const B=this.api,phase=(elapsed/this.dayNightCycle)*Math.PI*2;
+  // Daylight is strongest at cycle start and midpoint is the deepest night.
+  const daylight=.5+.5*Math.cos(phase),night=1-daylight;
+  const dusk=Math.min(1,night*1.35),berlin=this.place?.theme==='berlin';
+  const sky=this.skyLight,sun=this.sunLight;
+  if(sky){
+   sky.intensity=(berlin?.18:.16)+(berlin?.55:.72)*daylight;
+   sky.diffuse=B.Color3.Lerp(berlin?new B.Color3(.13,.19,.3):new B.Color3(.2,.16,.22),berlin?new B.Color3(.6,.74,.92):new B.Color3(.86,.79,.83),daylight);
+   sky.groundColor=B.Color3.Lerp(new B.Color3(.025,.035,.07),berlin?new B.Color3(.28,.32,.38):new B.Color3(.36,.27,.22),daylight);
+  }
+  if(sun){
+   sun.intensity=(berlin?.05:.08)+(berlin?1.4:2.95)*daylight;
+   sun.diffuse=B.Color3.Lerp(new B.Color3(.16,.2,.4),berlin?new B.Color3(.74,.79,.9):new B.Color3(1,.52,.2),daylight);
+  }
+  this.scene.ambientColor=B.Color3.Lerp(new B.Color3(.025,.035,.07),new B.Color3(.13,.14,.16),daylight);
+  if(this.streetLight)this.streetLight.intensity=(berlin?.2:.22)+(berlin?.52:.83)*daylight;
+  if(this.parisNeighborLight){
+   this.parisNeighborLight.intensity=berlin?.16+dusk*.42:.08+dusk*.86;
+   const interiorWarm=B.Color3.FromHexString(berlin?'#9cb9d0':'#ffd39a');
+   for(const mesh of this.parisNeighborMeshes||[]){
+    const material=mesh.material;if(!material)continue;
+    material.emissiveColor=interiorWarm.scale(material.metadata?.windowGlow
+     ? (berlin?.12+dusk*1.35:.08+dusk*2.1)
+     : (berlin?.08+dusk*.42:.035+dusk*.72));
+   }
+  }
+  for(const mesh of this.scene.meshes){
+   const material=mesh.material;
+   if(!material?.metadata?.glazing)continue;
+   material.albedoColor=B.Color3.Lerp(B.Color3.FromHexString('#b8d5df'),B.Color3.FromHexString('#d8aa76'),dusk*.72);
+   material.environmentIntensity=6-dusk*4.6;
+   material.emissiveColor=B.Color3.FromHexString('#f0b96e').scale(dusk*.16);
+  }
+  if(this.parisLampLight)this.parisLampLight.intensity=.12+dusk*1.8;
+  if(this.berlinLampLight)this.berlinLampLight.intensity=.08+dusk*.25;
+  if(this.parisLampBulb?.material)this.parisLampBulb.material.emissiveColor=B.Color3.FromHexString('#f4c778').scale(.55+dusk*3.4);
+  if(this.berlinLampBulb?.material)this.berlinLampBulb.material.emissiveColor=B.Color3.FromHexString('#b7ff9a').scale(.25+dusk*1.5);
+  if(this.parisLampProjectionMaterial){
+   this.parisLampProjectionMaterial.alpha=dusk*.58;
+   this.parisLampProjection?.setEnabled(dusk>.015);
+  }
+  if(this.parisLampBeamMaterial){
+   this.parisLampBeamMaterial.alpha=dusk*.055;
+   this.parisLampBeam?.setEnabled(dusk>.02);
+  }
+  if(this.parisLampHaloMaterial){
+   this.parisLampHaloMaterial.alpha=dusk*.18;
+   this.parisLampHalo?.setEnabled(dusk>.015);
+  }
+  if(this.scene.fogMode!==undefined){
+   this.scene.fogDensity=night*.00028;
+   this.scene.fogColor=B.Color3.Lerp(new B.Color3(.16,.18,.22),new B.Color3(.07,.09,.15),night);
+  }
+  this.canvas.dataset.dayNight=daylight.toFixed(3);
+  this.canvas.dataset.timeOfDay=daylight>.55?'day':daylight<.35?'night':'twilight';
+  const changed=this.lastDayNightLight===undefined||Math.abs(daylight-this.lastDayNightLight)>.002;
+  this.lastDayNightLight=daylight;
+  return changed;
+ }
  switchToCanvas(){if(this.disposed||!this.engine)return;const old=this.canvas,replacement=old.cloneNode(false);old.replaceWith(replacement);this.observer.disconnect();this.reactivity?.dispose();this.reactivity=null;this.scene.dispose();this.engine.dispose();this.engine=null;this.cat?.toCanvas();this.dj?.toCanvas();this.resident?.toCanvas();if(this.frameElement===old)this.frameElement=replacement;this.canvas=replacement;this.ctx=replacement.getContext('2d',{alpha:true});replacement.dataset.renderer='canvas2d';replacement.dataset.shutterPosition=this.progress.toFixed(4);this.observeLayout();this.resize();}
  drawCanvas(){const ctx=this.ctx;if(!ctx)return;const w=this.canvas.width,h=this.canvas.height,scale=h/H*(this.frameHeight/this.height),ox=(w-W*scale)/2;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);ctx.setTransform(scale,0,0,scale,ox,0);for(const item of this.records){
   if(item.kind==='rect'){ctx.fillStyle=item.color;ctx.fillRect(item.x,item.y,item.w,item.h);if(item.map){ctx.globalAlpha=.15;ctx.drawImage(item.map,item.x,item.y,item.w,item.h);ctx.globalAlpha=1;}}

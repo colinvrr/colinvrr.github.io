@@ -13,20 +13,17 @@ export class ResidentTimeline {
  range(a,b){return a+(b-a)*this.random();}
  begin(bounds={left:-500,right:1740}){
   const direction=this.random()<.5?1:-1,speed=this.range(67,87),margin=Math.min(180,(bounds.right-bounds.left)*.2);
-  const stop=this.berlin?clamp(this.range(330,880),bounds.left+margin,bounds.right-margin):this.range(114,132),z=this.berlin?this.range(80,121):this.range(132,140),pose=Math.floor(this.random()*4);
+  const stop=this.berlin?this.range(85,105):this.range(114,132),z=this.berlin?this.range(80,121):this.range(132,140),pose=Math.floor(this.random()*4);
   const order=[...DANCE_STYLES];for(let i=order.length-1;i>0;i--){const j=Math.floor(this.random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}if(order[0]===this.lastDance)[order[0],order[1]]=[order[1],order[0]];this.lastDance=order[0];
   const v={startAt:this.time,stop,z,pose,direction,seed:this.range(0,6.28),danceOrder:order,dancePeriod:this.range(6.5,8.5),danceTempo:this.range(.9,1.1),phases:[]};let at=0;
   const add=(kind,duration,extra={})=>{v.phases.push({kind,at,duration,...extra});at+=duration;};
   if(this.berlin){
-   const from=direction>0?bounds.left:bounds.right,to=direction>0?bounds.right:bounds.left;
-   add('walk',Math.abs(stop-from)/speed,{from,to:stop,direction});
-   add('dance',this.range(32,48));
-   const next=clamp(stop+direction*this.range(150,260),bounds.left+margin,bounds.right-margin);
-   add('walk',Math.max(1.2,Math.abs(next-stop)/speed),{from:stop,to:next,direction:Math.sign(next-stop)||direction});
-   add('dance',this.range(24,36),{x:next});
-   add('leave',Math.abs(to-next)/speed,{from:next,to,direction});
+   const from=bounds.left,to=bounds.left;
+   add('walk',Math.abs(stop-from)/speed,{from,to:stop,direction:1});
+   add('dance',this.range(60,85));
+   add('leave',Math.abs(to-stop)/speed,{from:stop,to,direction:-1});
   }else{
-   add('window-open',2.6);add('window-look',this.range(3.5,6.5));add('window-close',2.5);
+   add('window-approach',2.8);add('window-open',2.6);add('window-look',this.range(3.5,6.5));add('window-close',2.5);add('window-depart',2.8);
    add('inside',2.4);add('door-open',2.7);add('step-out',2.8);add('door-close',2.6);
    add('walk',1.15,{from:95,to:stop,direction:1});
    add('dance',this.range(52,68));
@@ -48,12 +45,18 @@ export class ResidentTimeline {
   let interaction=null,danceStyle=v.danceOrder[0],danceNext=danceStyle,danceBlend=0,danceTime=0;
   const contact=(kind,side,surface,weight)=>{interaction={kind,side,surface,weight:clamp(weight)};reach=interaction.weight;};
   if(phase.startsWith('window')){
-   atWindow=true;x=RESIDENT_WINDOW.x+100;y=450;yaw=0;
-   const swing=ease((p-.2)/.6);
-   windowOpen=phase==='window-open'?swing:phase==='window-close'?1-swing:1;
-   z=-66-72*windowOpen;
-   if(phase!=='window-look')contact('window',0,'inside',ease(p/.18)*ease((1-p)/.18));
-   visible=phase==='window-look'||windowOpen>.005||(phase==='window-open'&&p>.06)||(phase==='window-close'&&p<.94);
+   atWindow=true;y=450;
+   const center=RESIDENT_WINDOW.x+100,hiddenX=RESIDENT_WINDOW.x-120;
+   if(phase==='window-approach'||phase==='window-depart'){
+    const forward=phase==='window-approach',progress=forward?e:1-e;
+    x=mix(hiddenX,center,progress);z=-138;yaw=(forward?1:-1)*Math.PI/2*(forward?1-e:e);
+    walk=Math.sin(p*Math.PI);gait=progress*(center-hiddenX)*.075;
+   }else{
+    x=center;yaw=0;const swing=ease((p-.2)/.6);
+    windowOpen=phase==='window-open'?swing:phase==='window-close'?1-swing:1;
+    z=-138;
+    if(phase!=='window-look')contact('window',0,'inside',ease(p/.18)*ease((1-p)/.18));
+   }
   }else if(phase==='inside'){visible=false;}
   else if(['door-open','step-out','door-close','door-reopen','step-in','door-shut'].includes(phase)){
    const swing=ease((p-.18)/.62);
@@ -92,7 +95,7 @@ export class ResidentTimeline {
   // Settle and turn continuously at the ends of each walk.
   if(['walk','leave','return'].includes(phase)){yaw*=ease(p*6)*ease((1-p)*6);if(phase==='return')yaw=mix(yaw,-Math.PI,ease((p-.55)/.45));}
   if(reduced){walk=gait=dance=0;reach=0;interaction=null;if(!atWindow&&visible&&!phase.startsWith('door')&&!phase.startsWith('step')){x=v.stop;y=pavementY(v.z);z=v.z;yaw=0;}}
-  return {visible:t<v.duration&&visible,phase,x,y,z,yaw,walk,gait,dance,danceStyle,danceNext,danceBlend,danceTime,danceTempo:v.danceTempo,pose,poseIndex:s.pose??v.pose,t,seed:v.seed,reach,interaction,phaseProgress:p,atWindow,windowOpen,doorOpen};
+  return {visible:t<v.duration&&visible,phase,x,y,z,yaw,walk,gait,dance,danceStyle,danceNext,danceBlend,danceTime,danceTempo:v.danceTempo,parisDance:!this.berlin,pose,poseIndex:s.pose??v.pose,t,seed:v.seed,reach,interaction,phaseProgress:p,atWindow,windowOpen,doorOpen};
  }
 }
 
@@ -118,7 +121,7 @@ export function drawHingedPart(ctx,part){
 
 export class StreetResident {
  constructor(owner,options={}){
-  this.owner=owner;this.B=owner.api;this.timeline=new ResidentTimeline({berlin:owner.place?.theme==='berlin',...options});this.reduced=matchMedia('(prefers-reduced-motion: reduce)');
+  this.owner=owner;this.B=owner.api;this.timeline=new ResidentTimeline({berlin:owner.place?.theme==='berlin',firstDelay:owner.place?.model==='haussmann-store'?10:undefined,...options});this.reduced=matchMedia('(prefers-reduced-motion: reduce)');
   this.state=this.timeline.sample();this.meshes=[];this.materials=[];this.arms=[];this.legs=[];if(owner.engine)this.build();this.apply();
  }
  material(name,color,emission=.08){const B=this.B,m=new B.StandardMaterial(name,this.owner.scene);m.diffuseColor=B.Color3.FromHexString(color);m.emissiveColor=m.diffuseColor.scale(emission);m.specularColor=new B.Color3(.035,.035,.035);m.specularPower=18;this.materials.push(m);return m;}
@@ -187,6 +190,7 @@ export class StreetResident {
   this.key=new B.HemisphericLight('resident-soft-key',new B.Vector3(-.35,1,.8),scene);this.key.intensity=this.owner.place?.theme==='berlin'?1.02:.9;this.key.diffuse=new B.Color3(.94,.92,.87);this.key.groundColor=new B.Color3(.31,.34,.39);this.key.includedOnlyMeshes=this.meshes;
  }
  advance(dt,avoid){
+  if(this.owner.place?.model==='haussmann-store'&&!this.timeline.visits&&this.owner.progress<.999){this.timeline.time=0;return false;}
   const width=this.owner.viewWidth||1950,previous=this.state;
   this.timeline.advance(dt,{left:620-width/2-100,right:620+width/2+100});this.state=this.timeline.sample(this.reduced.matches,avoid);
   this.owner.canvas.dataset.residentState=this.state.phase;
@@ -199,7 +203,7 @@ export class StreetResident {
   if(door){door.angle=-s.doorOpen*1.27;if(door.root)door.root.rotation.y=door.angle;}
   this.owner.canvas.dataset.residentWindow=String((s.windowOpen||0).toFixed(3));this.owner.canvas.dataset.residentDoor=String((s.doorOpen||0).toFixed(3));
   if(!this.root)return;this.root.scaling.setAll(s.atWindow?1.15:1.42);this.root.setEnabled(s.visible);this.shadow.setEnabled(s.visible&&!s.atWindow&&s.z>-20);if(!s.visible)return;
-  const t=s.t||0,d=s.dance||0,pose=s.pose||0,gait=s.gait||0,walk=s.walk||0,seed=s.seed||0,walking=/^(walk|leave|return)$/.test(s.phase),motion=walking?capturedWalk(s):danceFrame(s),weight=walking?walk:d,interacting=!!s.interaction;
+  const t=s.t||0,d=s.dance||0,pose=s.pose||0,gait=s.gait||0,walk=s.walk||0,seed=s.seed||0,walking=/^(walk|leave|return|window-approach|window-depart)$/.test(s.phase),motion=walking?capturedWalk(s):danceFrame(s),weight=walking?walk:d,interacting=!!s.interaction;
   this.root.position.copyFrom(this.owner.vec(s.x+motion.x*d,s.y,s.z+motion.z*d));this.root.rotation.set(0,s.yaw+motion.yaw*d,0);
   this.torso.rotation.set(interacting?0:(s.atWindow?.025:0)+(motion.pitch||0)*weight,interacting?0:Math.sin(t*.45)*pose*.035+motion.twist*weight,interacting?0:motion.lean*weight+Math.sin(t*1.9)*pose*.012);
   this.torso.position.y=132+Math.sin(t*1.4)*.25+motion.bob*weight;

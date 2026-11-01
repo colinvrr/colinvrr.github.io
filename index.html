@@ -13,10 +13,10 @@
 <meta property="og:url" content="https://colinvrr.github.io/">
 <link rel="icon" href="data:,">
 <link rel="modulepreload" href="./vendor/babylon.min.js">
-<link rel="modulepreload" href="./model-scene.mjs?v=53">
+<link rel="modulepreload" href="./model-scene.mjs?v=77">
 <link rel="modulepreload" href="./universes.mjs?v=36">
-<link rel="preload" href="./mixes.json?v=38" as="fetch" crossorigin>
-<link rel="stylesheet" href="./style.css?v=50">
+<link rel="preload" href="./mixes.json?v=39" as="fetch" crossorigin>
+<link rel="stylesheet" href="./style.css?v=52">
 </head>
 <body>
 <audio id="preloaded-mix" src="./audio/sofasurfs-minimix.mp3" preload="metadata" crossorigin="anonymous" hidden></audio>
@@ -54,9 +54,10 @@
 <p id="mix-title">Chargement du mix…</p>
 <input id="seek" class="range seek" type="range" min="0" max="1" step="1" value="0" disabled aria-label="Position dans le mix" aria-valuetext="Durée inconnue">
 </div>
-<div class="volume-controls" role="group" aria-label="Volume de sortie">
+<div class="volume-controls" role="group" aria-label="Volume et éclairage">
 <button id="mute" class="quiet-button" type="button" aria-label="Couper le son" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h4l5-4v14l-5-4H3z"/><path class="sound-waves" d="M16 8c2 2 2 6 0 8m3-11c4 4 4 10 0 14"/><path class="mute-cross" d="m16 9 6 6m0-6-6 6"/></svg></button>
 <div class="volume-fader"><label for="volume">Volume <output id="volume-value">100 %</output></label><input id="volume" class="range" type="range" min="0" max="100" step="1" value="100" aria-label="Volume" aria-valuetext="100 %"></div>
+<div class="day-night-fader"><label for="day-night">Nuit <output id="day-night-value">Jour</output></label><input id="day-night" class="range" type="range" min="0" max="1" step="0.01" value="1" aria-label="Éclairage de la scène, nuit à gauche et jour à droite" aria-valuetext="Jour"></div>
 </div>
 <div class="utility-controls">
 <button class="quiet-button" id="share" type="button" aria-label="Partager le site"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M5 12v8h14v-8"/></svg><span id="share-label" class="sr-only">Partager</span></button>
@@ -76,6 +77,6 @@
 <p id="instructions" class="sr-only">Le levier 1 sélectionne Paris, le levier 2 sélectionne Berlin. Un seul levier reste enclenché à la fois. Sélectionner une scène ne lance pas sa musique et laisse son volet fermé. Play ouvre le volet et lance le mix du lieu choisi. Pause fige le son et l’image. Stop remet le mix au début et referme le volet. À la fin d’un mix, le chat rejoint le prochain lieu. Cliquer sur le décor lance ou met en pause la lecture. Espace : lecture ou pause. Flèches dans les sélecteurs : choisir un lieu. Flèches dans la progression : avancer ou reculer, Début et Fin : extrémités du mix. Le volume et le muet restent conservés entre les lieux. M : microphone. S : son d’un onglet. F : plein écran. Échap : arrêter et fermer le volet ou annuler le changement de lieu.</p>
 <p id="status" class="sr-only" role="status" aria-live="polite">Volet fermé. MIX à l’arrêt.</p>
 </main>
-<script type="module" src="./app.js?v=53"></script>
+<script type="module" src="./app.js?v=78"></script>
 </body>
 </html>
