@@ -16,10 +16,11 @@ export class CatPassage {
  start(){
   if(this.active)return;
   this.active=true;this.paused=false;this.phase='out';this.time=0;this.version++;
-  const scene=this.getScene(),s=scene.cat?.state,width=scene.viewWidth||1500;
+  const scene=this.getScene(),s=scene.cat?.state,width=scene.viewWidth||1500,center=scene.viewCenterX||620;
   this.origin=s?.visible?{...s}:passagePose(95,80,0,{walk:0,sit:1});
-  this.origin.x=Math.max(620-width*.35,Math.min(620+width*.35,this.origin.x));
-  this.targetX=Math.max(this.origin.x+width*.15,620+width*.2);
+  const leftLimit=center-width/2+120,rightLimit=center+width/2-180;
+  this.origin.x=Math.max(leftLimit,Math.min(rightLimit,this.origin.x));
+  this.targetX=Math.min(rightLimit,Math.max(this.origin.x+width*.15,center+width*.2));
   if(this.mask)this.mask.hidden=!this.visible();
   this.machine?.setAttribute?.('aria-busy','true');if(this.machine?.dataset)this.machine.dataset.travelling='true';
   if(this.visible()){if(this.reduced())this.swap();else this.drawOut();}
@@ -40,7 +41,14 @@ export class CatPassage {
  lens(radius,zoom){
   const scene=this.getScene(),r=this.dimensions(),p=scene.catFocusPoint?.()||{x:r.width*.5,y:r.height*.36};
   const edge=Math.min(radius+8,Math.min(r.width,r.height)*.32),weight=clamp((zoom-1)/1.6);
-  const dx=(Math.max(edge,Math.min(r.width-edge,p.x))-p.x)*weight,dy=(Math.max(edge,Math.min(r.height-edge,p.y))-p.y)*weight;
+  const rawDx=(Math.max(edge,Math.min(r.width-edge,p.x))-p.x)*weight;
+  const rawDy=(Math.max(edge,Math.min(r.height-edge,p.y))-p.y)*weight;
+  const cover=(offset,size,scale)=>[
+    -offset*(1-scale),
+    size-offset*(1-scale)-size*scale
+  ];
+  const [maxDx,minDx]=cover(p.x,r.width,zoom),[maxDy,minDy]=cover(p.y,r.height,zoom);
+  const dx=Math.max(minDx,Math.min(maxDx,rawDx)),dy=Math.max(minDy,Math.min(maxDy,rawDy));
   if(scene.canvas?.style){scene.canvas.style.transformOrigin=`${p.x}px ${p.y}px`;scene.canvas.style.transform=zoom===1?'':`translate(${dx}px, ${dy}px) scale(${zoom})`;}
   // Keep the garage image registered to the same facade as the camera lens.
   const window=scene.window,frame=scene.frameElement;
@@ -50,7 +58,14 @@ export class CatPassage {
    window.style.transformOrigin=`${p.x-left}px ${p.y-top}px`;
    window.style.transform=zoom===1?'':`translate(${dx}px, ${dy}px) scale(${zoom})`;
   }
-  if(this.mask){this.mask.style.cssText=`--iris-x:${r.left+p.x+dx}px;--iris-y:${r.top+p.y+dy}px;--iris-radius:${radius}px;`;this.mask.dataset.phase=this.phase;}
+  if(this.mask){
+   const irisRadius=Math.max(0,radius),xMargin=Math.min(irisRadius,r.width/2),yMargin=Math.min(irisRadius,r.height/2);
+   const right=r.left+r.width,bottom=r.top+r.height;
+   const irisX=Math.max(r.left+xMargin,Math.min(right-xMargin,r.left+p.x+dx));
+   const irisY=Math.max(r.top+yMargin,Math.min(bottom-yMargin,r.top+p.y+dy));
+   this.mask.style.cssText=`--iris-x:${irisX}px;--iris-y:${irisY}px;--iris-radius:${irisRadius}px;`;
+   this.mask.dataset.phase=this.phase;
+  }
  }
  drawOut(){
   const t=this.time,s=this.origin,wake=ease(t/1.1),walkProgress=clamp((t-2.1)/3.7),x=mix(s.x,this.targetX,ease(walkProgress));
@@ -76,7 +91,7 @@ export class CatPassage {
   const scene=this.getScene(),width=scene.viewWidth||1500,from=620-width*.17,to=500,p=ease(this.time/2.3),x=mix(from,to,p);
   scene.setCatJourneyPose?.(passagePose(x,80,this.time,{walk:ease(this.time/.3)*(1-ease((this.time-1.9)/.4)),gait:(x-from)*.18}));
   const r=this.dimensions(),small=Math.min(100,r.width*.23),open=ease((this.time-.45)/2.15),radius=mix(small,Math.hypot(r.width,r.height)*1.3,open)*ease(this.time/.35);
-  this.lens(radius,mix(2.6,1,open));
+  this.lens(radius,mix(3.2,1,open));
  }
  pause(){this.paused=true;}
  resume(){this.paused=false;}

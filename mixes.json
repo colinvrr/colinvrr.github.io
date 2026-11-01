@@ -1,19 +1,20 @@
 {
   "src": "./audio/sofasurfs-minimix.mp3",
   "duration": 1196.852187,
-  "title": "Sofasurfs #1 — Disco House / French Touch",
+  "title": "MIX1",
   "chapters": [
     {
       "place": "paris-phone",
       "src": "./audio/sofasurfs-minimix.mp3",
       "duration": 1196.852187,
-      "title": "Sofasurfs #1 — Disco House / French Touch"
+      "title": "MIX1"
     },
     {
       "place": "paris-apartment",
       "src": "./audio/mix2-261026.mp3",
       "duration": 1967,
-      "title": "Mix #2 — Berlin / Hinterhof 02"
+      "title": "MIX2",
+      "startTime": 50
     }
   ]
 }

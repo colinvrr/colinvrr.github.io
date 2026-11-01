@@ -478,6 +478,7 @@ export class UniverseRenderer {
       gl.drawArrays(gl.TRIANGLES,0,3);
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,this.size,this.size);
+    gl.disable(gl.SCISSOR_TEST);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
     gl.disable(gl.DEPTH_TEST);gl.useProgram(this.program);
     gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.surface);
     gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,this.signalTexture);gl.activeTexture(gl.TEXTURE0);

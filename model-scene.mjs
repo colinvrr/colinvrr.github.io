@@ -81,7 +81,20 @@ export class StreetScene {
   this.canvas.dataset.activeScenes=String(this.engine?.scenes.length||0);this.canvas.dataset.peakScenes=String(Math.max(Number(this.canvas.dataset.peakScenes)||0,this.engine?.scenes.length||0));
   this.onLost=event=>{event.preventDefault();this.switchToCanvas();};this.canvas.addEventListener('webglcontextlost',this.onLost);
   this.observer=new ResizeObserver(()=>this.resize());this.observeLayout();this.resize();
-  this.ready=new Promise(resolve=>{const finish=()=>{if(!this.disposed){this.render();if(this.engine)this.shadows.getShadowMap().refreshRate=0;this.canvas.dataset.ready='true';}resolve();};if(this.engine)this.scene.executeWhenReady(finish);else finish();});
+  this.ready=new Promise(resolve=>{
+   let settled=false;
+   const finish=()=>{
+    if(settled)return;
+    settled=true;
+    clearTimeout(this.readyFallback);
+    if(!this.disposed){this.render();if(this.engine)this.shadows.getShadowMap().refreshRate=0;this.canvas.dataset.ready='true';}
+    resolve();
+   };
+   if(this.engine){
+    this.scene.executeWhenReady(finish);
+    this.readyFallback=setTimeout(finish,1800);
+   }else finish();
+  });
  }
  setupCanvas(){let ctx=this.canvas.getContext('2d',{alpha:true});if(!ctx){const replacement=this.canvas.cloneNode(false);this.canvas.replaceWith(replacement);if(this.frameElement===this.canvas)this.frameElement=replacement;this.canvas=replacement;ctx=replacement.getContext('2d',{alpha:true});}this.ctx=ctx;}
  vec(x,y,z){return new B.Vector3(x-W/2,H/2-y,z);}
@@ -329,8 +342,12 @@ export class StreetScene {
   const bounds=this.canvas.getBoundingClientRect(),rect={width:this.canvas.clientWidth||bounds.width,height:this.canvas.clientHeight||bounds.height},frame=this.frameElement===this.canvas?rect:this.frameElement.getBoundingClientRect();
   if(!rect.width||!rect.height||!frame.height)return;
   this.width=rect.width;this.height=rect.height;this.frameHeight=frame.height;
-  const {fov,offset,zoom}=streetFraming({berlin:this.place?.theme==='berlin',width:rect.width,height:rect.height,engine:!!this.engine}),viewWidth=H*rect.width/frame.height/zoom;this.viewWidth=viewWidth;
-  Object.assign(this.window.style,{left:`${(viewWidth/2+OPEN.x-W/2)/viewWidth*100}%`,top:`${(H/2+(OPEN.y-H/2-offset)*zoom)/H*100}%`,width:`${OPEN.width/viewWidth*100}%`,height:`${OPEN.height*zoom/H*100}%`});
+  const {fov,offset,zoom,windowZoom,centerX,windowOffsetX}=streetFraming({berlin:this.place?.theme==='berlin',width:rect.width,height:rect.height,engine:!!this.engine}),viewWidth=H*rect.width/frame.height/zoom,windowWorldWidth=H*rect.width/frame.height/windowZoom;
+  const windowLeft=(viewWidth/2+OPEN.x-centerX)/viewWidth*frame.width+windowOffsetX/100*frame.width;
+  const windowWidth=OPEN.width/windowWorldWidth*frame.width;
+  const boundedWindowLeft=Math.max(0,Math.min(frame.width-windowWidth,windowLeft));
+  this.viewWidth=viewWidth;this.viewCenterX=centerX;
+  Object.assign(this.window.style,{left:`${boundedWindowLeft}px`,top:`${(H/2+(OPEN.y-H/2-offset)*windowZoom)/H*frame.height}px`,width:`${windowWidth}px`,height:`${OPEN.height*windowZoom/H*frame.height}px`});
   if(this.engine){
    this.camera.orthoLeft=viewWidth/2;this.camera.orthoRight=-viewWidth/2;this.camera.orthoTop=H/2;this.camera.orthoBottom=-H/2;
    this.engine.setHardwareScalingLevel(1/Math.max(2,devicePixelRatio||1));this.engine.resize();
@@ -338,7 +355,8 @@ export class StreetScene {
    // framing. An off-centre projection keeps every facade and the aperture in
    // the same screen position while revealing the foreground below them.
    this.camera.unfreezeProjectionMatrix();
-   this.camera.position.y=-offset;this.camera.setTarget(new B.Vector3(0,-offset,0));
+   const cameraX=centerX-W/2;
+   this.camera.position.x=cameraX;this.camera.position.y=-offset;this.camera.setTarget(new B.Vector3(cameraX,-offset,0));
    this.camera.fov=2*Math.atan(Math.tan(fov/2)*rect.height/frame.height);
    if(this.frameElement!==this.canvas){
     const projection=this.camera.getProjectionMatrix(true).clone();

@@ -46,7 +46,7 @@ export class ResidentTimeline {
   const contact=(kind,side,surface,weight)=>{interaction={kind,side,surface,weight:clamp(weight)};reach=interaction.weight;};
   if(phase.startsWith('window')){
    atWindow=true;y=450;
-   const center=RESIDENT_WINDOW.x+100,hiddenX=RESIDENT_WINDOW.x-120;
+   const center=RESIDENT_WINDOW.x+100, hiddenX=RESIDENT_WINDOW.x-120;
    if(phase==='window-approach'||phase==='window-depart'){
     const forward=phase==='window-approach',progress=forward?e:1-e;
     x=mix(hiddenX,center,progress);z=-138;yaw=(forward?1:-1)*Math.PI/2*(forward?1-e:e);

@@ -27,6 +27,7 @@ const volumeInput = document.querySelector('#volume');
 const volumeValue = document.querySelector('#volume-value');
 const dayNightInput = document.querySelector('#day-night');
 const dayNightValue = document.querySelector('#day-night-value');
+let dayNightLevel=1;
 const muteButton = document.querySelector('#mute');
 const toolsToggle = document.querySelector('#tools-toggle');
 const toolsMenu = document.querySelector('#tools-menu');
@@ -39,17 +40,20 @@ const mixAudio = document.querySelector('#preloaded-mix') || new Audio();
 let outputVolume=1,outputMuted=false,outputGain=null,queuedSeek=0;
 const updateDayNightControl = value => {
   const level=Number(value);
-  dayNightInput.style.setProperty('--fill',`${level*100}%`);
-  const label=level<.35?'Nuit':level<.65?'Crépuscule':'Jour';
+  const isNight=level<.5;
+  const label=isNight?'NUIT':'JOUR';
   dayNightValue.textContent=label;
-  dayNightInput.setAttribute('aria-valuetext',label);
+  dayNightInput.setAttribute('aria-pressed',String(isNight));
+  dayNightInput.setAttribute('aria-label',isNight?'Passer en mode jour':'Passer en mode nuit');
+  dayNightInput.dataset.mode=isNight?'night':'day';
 };
-dayNightInput.addEventListener('input',()=>{
-  const level=Number(dayNightInput.value);
-  scene.setDayNightLevel?.(level);
-  updateDayNightControl(level);
-});
-updateDayNightControl(dayNightInput.value);
+const setDayNight = level => {
+  dayNightLevel=Number(level)>=.5?1:0;
+  scene.setDayNightLevel?.(dayNightLevel);
+  updateDayNightControl(dayNightLevel);
+};
+dayNightInput.addEventListener('click',()=>setDayNight(dayNightInput.getAttribute('aria-pressed')==='true'?1:0));
+setDayNight(1);
 const stopButton = document.querySelector('#stop');
 const shareButton = document.querySelector('#share');
 const shareLabel = document.querySelector('#share-label');
@@ -59,7 +63,7 @@ const mixUnit = document.querySelector('#mix-unit');
 const mix2Button = document.querySelector('#mix2');
 const mix2Led = document.querySelector('#mix2-led');
 const mix2Unit = document.querySelector('#mix2-unit');
-const track = {src:null, file:null,duration:0,title:'MIX'};
+const track = {src:null, file:null,duration:0,title:'MIX',startTime:0};
 const trackClock=createTrackClock(document.querySelector('#mix-time'));
 const feedback=new MechanicalFeedback();
 feedback.setVisible(!document.hidden);
@@ -90,7 +94,7 @@ const mixesReady = fetch('./mixes.json?v=39').then(response => {
 }).then(config => {
  chapters=(Array.isArray(config.chapters)?config.chapters:[config]).filter(item=>item.src);
  chapterIndex=Math.max(0,chapters.findIndex(item=>item.place===place.id));
- const first=chapters[chapterIndex]||config;track.src=first.src||null;track.title=first.title||'MIX';
+ const first=chapters[chapterIndex]||config;track.src=first.src||null;track.title=first.title||'MIX';track.startTime=Math.max(0,Number(first.startTime)||0);
  if(!track.file){track.duration=Number(first.duration)||0;trackClock.update(null,track.duration);if(track.src)prepareMixAudio(track.src);}
  syncControls();
 })
@@ -114,11 +118,11 @@ function syncControls() {
   tabAudioButton.setAttribute('aria-pressed',String(mode==='screen'));
   mixButton.tabIndex=secondPlace?-1:0;mix2Button.tabIndex=secondPlace?0:-1;
   mixButton.setAttribute('aria-checked',String(!secondPlace));
-  mixButton.setAttribute('aria-label','01 Paris');
+  mixButton.setAttribute('aria-label','MIX1');
   mixLed.dataset.on=String(!secondPlace);
   mixLed.setAttribute('aria-label',!secondPlace?'Scène 1 sélectionnée':'Scène 1 non sélectionnée');
   mix2Button.setAttribute('aria-checked',String(secondPlace));
-  mix2Button.setAttribute('aria-label','02 Berlin');
+  mix2Button.setAttribute('aria-label','MIX2');
   mix2Led.dataset.on=String(secondPlace);
   mix2Led.setAttribute('aria-label',secondPlace?'Scène 2 sélectionnée':'Scène 2 non sélectionnée');
   mediaControls.update(mode==='file'?media:null,playing,track.file?.name?.replace(/\.[^.]+$/,'')||track.title||'MIX');
@@ -558,14 +562,19 @@ async function startMix() {
     if(track.file){objectURL=URL.createObjectURL(track.file);audio.src=objectURL;}
     else if(audio.getAttribute?.('src')!==track.src){audio.crossOrigin='anonymous';audio.src=track.src;}
     audio.preload='auto';
+    const startTime=track.file?0:Math.max(0,Number(track.startTime)||0);
     for(const event of ['loadedmetadata','durationchange','timeupdate','seeking','seeked','ratechange'])listenMedia(audio,event,()=>{
       if(media!==audio)return;
       if(Number.isFinite(audio.duration)&&audio.duration>0)track.duration=audio.duration;
-      if(event==='loadedmetadata'&&queuedSeek>0){try{audio.currentTime=queuedSeek;}catch{}queuedSeek=0;}
+      if(event==='loadedmetadata'){
+       if(queuedSeek>0){try{audio.currentTime=queuedSeek;}catch{}queuedSeek=0;}
+       else if(startTime>0){try{audio.currentTime=Math.min(startTime,audio.duration||startTime);}catch{}}
+      }
       mediaControls.position();updateTimeline();
     });
     mediaSource=audioNodes.get(audio);if(!mediaSource){mediaSource=context.createMediaElementSource(audio);audioNodes.set(audio,mediaSource);}mediaSource.connect(analyser);analyser.connect(outputGain);
     if(queuedSeek>0&&audio.readyState>=1){audio.currentTime=queuedSeek;queuedSeek=0;}
+    else if(startTime>0&&audio.readyState>=1){audio.currentTime=Math.min(startTime,audio.duration||startTime);}
     listenMedia(audio,'playing',()=>{
       if(media!==audio)return;
       mixStarting=false;playing=true;visualPaused=false;setShutter(true);syncControls();
@@ -609,7 +618,7 @@ async function selectScene(index){
  const audio=media||preparedAudio;
  releaseSource();
  setStatus(`Chargement de ${target.label||'la scène'}…`);
- beginPassage(audio,{index:targetIndex,instant:true});
+ beginPassage(audio,{index:targetIndex});
 }
 async function waitForSceneReady(scene,maxWait=900){
  let timer;
@@ -643,13 +652,14 @@ function beginPassage(audio,{index=(chapterIndex+1)%chapters.length,instant=fals
     if(disposed)return;
     scene=new StreetScene(modelCanvas,visualWindow,previousPlace,{frameElement:surface,engine});
     await scene.ready;
+    scene.setDayNightLevel?.(dayNightLevel);
     if(disposed)return;
     shutter=new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
     sceneLoading=false;modelCanvas.dataset.sceneLoading='false';
     transition.clear();syncControls();
    };
    try{
-    candidate=new StreetScene(modelCanvas,visualWindow,destination,{frameElement:surface,engine});scene=candidate;await waitForSceneReady(candidate);
+    candidate=new StreetScene(modelCanvas,visualWindow,destination,{frameElement:surface,engine});scene=candidate;await waitForSceneReady(candidate);candidate.setDayNightLevel?.(dayNightLevel);
    }catch(error){await restore();throw error;}
    if(disposed){candidate.dispose({keepEngine:!!engine});return;}
    if(!transition.active||transition.version!==version){
@@ -659,7 +669,7 @@ function beginPassage(audio,{index=(chapterIndex+1)%chapters.length,instant=fals
    surface.dataset.place=place.id;surface.setAttribute('aria-label',`${place.label}, lire ou mettre en pause le mix`);
    shutter=new MetalShutter(scene,{onMotion:motion=>feedback.shutter(motion)});
    sceneLoading=false;modelCanvas.dataset.sceneLoading='false';
-   track.src=next.src;track.title=next.title||'MIX';track.duration=Number(next.duration)||0;track.file=null;
+   track.src=next.src;track.title=next.title||'MIX';track.duration=Number(next.duration)||0;track.startTime=Math.max(0,Number(next.startTime)||0);track.file=null;
    visualTime=0;shapePhase=0;graphicsDirty=true;checkOutput=true;checkedWorld=null;
    prepareMixAudio(track.src,audio);syncControls();await waitForSceneReady(scene,250);if(place.model!=='groundfloor-apartment'&&!graphicsReady)prepareGraphics();
   },

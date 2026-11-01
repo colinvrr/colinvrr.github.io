@@ -178,6 +178,9 @@ async function buildParisStreetLamp(scene){
   scene.parisLampHalo=halo;scene.parisLampHaloMaterial=haloMaterial;
   const lamp=new B.HemisphericLight('paris-street-lamp-light',new B.Vector3(0,-1,0),scene.scene);scene.parisLampLight=lamp;
   lamp.diffuse=new B.Color3(1,.72,.4);lamp.groundColor=new B.Color3(.12,.07,.03);lamp.intensity=.16;
+  scene.canvas.dataset.parisLamp='ready';
+  scene.updateDayNight?.(scene.dayNightElapsed||0);
+  scene.render?.();
  }catch(error){console.error('Paris street lamp asset failed to load',error);}
 }
 export function buildNeighbors(scene){scene.neighborSeed=83;scene.neighborRoom=0;buildBrickNeighbor(scene);buildDecoNeighbor(scene);buildParisStreetLamp(scene);}
